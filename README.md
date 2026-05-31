@@ -23,6 +23,10 @@ This repo contains the **specification only**. No commands are implemented yet. 
 - **v0.x**: rule model implementation, then `init`, then `audit`.
 - **1.0**: both commands shipping end-to-end against the spec, audited against a real production workspace.
 
+## Development
+
+icm-kit is developed spec-driven. `SPEC.md` is the source of truth for behaviour. Any change that affects the classifier or its rules updates `SPEC.md` and the code in the same PR. If the spec is ambiguous or wrong, update the spec (or open an issue) before changing the code.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
