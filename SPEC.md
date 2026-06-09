@@ -132,7 +132,7 @@ A workspace is **ICM-compliant** if and only if all the following hold. Each rul
 
 ## 4. Failure modes
 
-Each failure mode is a lint rule. The five below are derived directly from the paper's Failure Modes section. Severity in v0.1 is `warning` for all rules; an `error` severity is reserved for later.
+Each failure mode is a lint rule, carrying a stable code (`F1` through `F6`, in section order 4.1 through 4.6) that the rule model and audit output use as its identifier. The first five (`F1` to `F5`) are derived directly from the paper's Failure Modes section. The sixth (`F6`, `MALFORMED_STAGE_CONTRACT`) is original to icm-kit and has no counterpart in the paper; it enforces the stage-contract shape required by W7 (§3). Severity in v0.1 is `warning` for all rules; an `error` severity is reserved for later.
 
 ### 4.1 `MONOLITHIC_CONTEXT`
 
