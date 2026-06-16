@@ -126,8 +126,10 @@ export function classify(
     });
   }
 
-  // Override (§2.5): a file the enclosing CLAUDE.md references by name routes on
-  // demand as a reference rather than falling through to Hidden context.
+  // Load/skip fallback (§2.5): evaluated after the canonical-home rows above,
+  // so a canonical match wins. A file the enclosing CLAUDE.md names by hand
+  // routes on demand as a reference rather than falling through to Hidden
+  // context (this satisfies W5). Full type-precedence is deferred to v0.2.
   if (isMarkdown(relPath) && namedByClaudeMd(enclosingClaudeMd, relPath)) {
     return result({
       path: filePath,
