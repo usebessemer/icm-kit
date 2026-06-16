@@ -33,7 +33,8 @@
     "url": "https://github.com/usebessemer/icm-kit/issues"
   },
   "dependencies": {
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "js-tiktoken": "^1.0.21"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
