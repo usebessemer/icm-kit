@@ -12,11 +12,16 @@
  *   workspace (root and nested), so a nested violation surfaces under its own
  *   W code at the nested path, rather than as a distinct W4 finding.
  * - W3 / F1 soft signal detect the content-MIXING case (a non-CLAUDE file with
- *   an embedded behavioural block). Detecting wrong-home placement by content
- *   inference is a later refinement.
- * - F3 STALE_CONTENT implements the dangling-pointer bullet (a CLAUDE.md names
- *   a Markdown file that does not exist). The omission bullet and time-based
- *   heuristics are deferred (SPEC §4.3, §5).
+ *   a dense embedded behaviour block). Detecting wrong-home placement by
+ *   content inference is a later refinement.
+ * - F5 LAYER_BLOAT keys off section size + heading shape, not marker density
+ *   (which inverts on directive-dense ops manuals): a large CLAUDE.md section
+ *   that is neither the load/skip table nor a recognisably identity heading.
+ *   Coarse and heading-dependent by design (SPEC §4.5, v0.1 limitation).
+ * - F3 STALE_CONTENT reads pointers from the load/skip table only (SPEC §4.3),
+ *   not prose; the omission bullet and time-based heuristics are deferred.
+ * - F1 size caps stay at the spec defaults: a crude "egregiously huge" guard,
+ *   not tuned to reproduce any hand-audit (SPEC §5 q3).
  */
 
 import { classify } from './classify.js';
@@ -30,8 +35,10 @@ import {
 import type { Classification, Finding, Severity, Thresholds } from './model.js';
 import { baseName, dirOf, isMarkdown, routingDepth } from './paths.js';
 import {
-  countIdentityMarkers,
-  extractMarkdownPointers,
+  extractLoadSkipPointers,
+  hasBehaviourBlock,
+  hasLoadSkipTable,
+  isIdentityHeading,
   parseStageContract,
   splitSections,
 } from './parse.js';
@@ -43,12 +50,8 @@ const W = WELL_FORMEDNESS_RULES;
 const F = FAILURE_MODES;
 const WARNING: Severity = 'warning';
 
-/**
- * The minimum number of behavioural directive markers that flags a non-CLAUDE
- * file as carrying an embedded behaviour block (F1 soft signal / W3). A
- * heuristic, not a spec threshold; tune against real workspaces.
- */
-const MIXED_CONTENT_MARKER_MIN = 3;
+/** A section heading that announces the permitted load/skip table (§2.3). */
+const LOAD_SKIP_HEADING = /\b(load\s*\/\s*skip|routing)\b/i;
 
 /** Options for a run; both fall back to the SPEC v0.1 defaults. */
 export interface AuditOptions {
@@ -184,13 +187,18 @@ function checkMonolithicSize(
   const cap = isClaudeMd
     ? thresholds.claudeMdMaxTokens
     : thresholds.fileMaxTokens;
-  const tokens = countTokens(file.content);
+  // Unreadable or non-UTF-8 files have empty text; fall back to a byte-based
+  // estimate so a binary monolith can still trip the size guard.
+  const estimated = file.content.length === 0 && file.bytes > 0;
+  const tokens = estimated
+    ? Math.ceil(file.bytes / 4)
+    : countTokens(file.content);
   if (tokens > cap) {
     findings.push({
       rule: F.F1,
       severity: WARNING,
       path: file.path,
-      message: `File is ${tokens} tokens, over the ${cap}-token cap for ${isClaudeMd ? 'a CLAUDE.md' : 'a single file'} (F1 MONOLITHIC_CONTEXT).`,
+      message: `File is ${tokens} tokens${estimated ? ' (estimated from bytes)' : ''}, over the ${cap}-token cap for ${isClaudeMd ? 'a CLAUDE.md' : 'a single file'} (F1 MONOLITHIC_CONTEXT).`,
     });
   }
 }
@@ -203,13 +211,12 @@ function checkContentSegregation(
   // CLAUDE.md is the one file permitted to mix content types (§2.3).
   if (baseName(file.path) === ROOT_IDENTITY_FILE) return;
   if (!isMarkdown(file.path) || c.unclassified) return;
-  const markers = countIdentityMarkers(file.content);
-  if (markers >= MIXED_CONTENT_MARKER_MIN) {
+  if (hasBehaviourBlock(file.content)) {
     findings.push({
       rule: F.F1,
       severity: WARNING,
       path: file.path,
-      message: `A ${c.contentType} file carries an embedded behaviour block (${markers} directive markers): it mixes content types (F1 soft signal / W3 CONTENT_SEGREGATION).`,
+      message: `A ${c.contentType} file carries a dense embedded behaviour block: it mixes content types (F1 soft signal / W3 CONTENT_SEGREGATION).`,
       relatedRule: W.W3,
     });
   }
@@ -253,14 +260,14 @@ function checkStaleContent(
   findings: Finding[],
 ): void {
   const root = dirOf(claudePath);
-  for (const pointer of extractMarkdownPointers(content)) {
+  for (const pointer of extractLoadSkipPointers(content)) {
     const resolved = root === '' ? pointer : `${root}/${pointer}`;
     if (treeSet.has(resolved) || treeSet.has(pointer)) continue;
     findings.push({
       rule: F.F3,
       severity: WARNING,
       path: claudePath,
-      message: `Pointer to a file that does not exist: ${pointer} (F3 STALE_CONTENT).`,
+      message: `Load/skip table points to a file that does not exist: ${pointer} (F3 STALE_CONTENT).`,
     });
   }
 }
@@ -277,7 +284,7 @@ function checkLayerBloat(
   // Variant A: the root CLAUDE.md routes tasks at files that live only inside a
   // child workspace; that operations content belongs in the child (§4.5).
   if (claudePath === ROOT_IDENTITY_FILE) {
-    for (const pointer of extractMarkdownPointers(content)) {
+    for (const pointer of extractLoadSkipPointers(content)) {
       if (treeSet.has(pointer) && routingDepth(pointer, tree) >= 2) {
         findings.push({
           rule: F.F5,
@@ -289,20 +296,23 @@ function checkLayerBloat(
     }
   }
 
-  // Variant B: a contiguous, large, non-identity prose block baked into a
-  // CLAUDE.md instead of split out to context/ or a child (§4.5).
+  // Variant B: a large CLAUDE.md section that is neither the permitted load/skip
+  // table nor recognisably identity is misplaced operations or situational
+  // prose (§4.5). Keyed off size + heading shape, not marker density: real ops
+  // manuals are directive-dense and would escape a density filter. The identity
+  // preamble (level 0) is exempt; F1 backstops a headingless monolith.
   for (const section of splitSections(content)) {
+    if (section.level === 0) continue;
+    if (isIdentityHeading(section.heading)) continue;
+    if (LOAD_SKIP_HEADING.test(section.heading)) continue;
+    if (hasLoadSkipTable(section.body)) continue;
     const tokens = countTokens(section.body);
-    if (
-      tokens > thresholds.layerBloatProseTokens &&
-      countIdentityMarkers(section.body) <= 1
-    ) {
-      const label = section.heading ? `"${section.heading}"` : 'the preamble';
+    if (tokens > thresholds.layerBloatProseTokens) {
       findings.push({
         rule: F.F5,
         severity: WARNING,
         path: claudePath,
-        message: `Large non-identity block in ${label} (${tokens} tokens, over ${thresholds.layerBloatProseTokens}): situational or operations content at the wrong level (F5 LAYER_BLOAT).`,
+        message: `Large non-identity block in "${section.heading}" (${tokens} tokens, over ${thresholds.layerBloatProseTokens}): operations or situational content at the wrong level (F5 LAYER_BLOAT).`,
       });
     }
   }

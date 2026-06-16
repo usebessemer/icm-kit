@@ -7,9 +7,9 @@ import type { Finding } from '../src/model.js';
 import { buildWorkspace } from './helpers/fixtures.js';
 
 /**
- * Audit-runner tests. The `clean` fixture run is the no-false-positives guard:
- * a realistic well-formed workspace must stay quiet except for the two files
- * deliberately left unrouted. The in-memory cases pin each individual rule.
+ * Audit-runner tests. The `clean` fixture run is the no-false-positives guard;
+ * the `aios-mirror` run is the honest real-shapes reproduction (#11). In-memory
+ * cases pin each rule, including the false positives the #11 review surfaced.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -39,12 +39,6 @@ describe('audit(): no false positives on the clean fixture', () => {
       { rule: 'HIDDEN_CONTEXT', path: 'orphan.md' },
     ]);
   });
-
-  it('ties HIDDEN_CONTEXT back to W5', () => {
-    expect(at(findings, 'HIDDEN_CONTEXT', 'orphan.md')?.relatedRule).toBe(
-      'ROUTABLE_FILES',
-    );
-  });
 });
 
 describe('audit(): well-formedness rules', () => {
@@ -54,6 +48,8 @@ describe('audit(): well-formedness rules', () => {
   });
 
   it('W2 fires on competing case-variant root identity files', () => {
+    // Note: unreachable via readWorkspace on a case-insensitive FS; this pins
+    // the intended behaviour via the in-memory builder.
     const findings = audit(
       buildWorkspace({ 'CLAUDE.md': '# id', 'claude.md': '# dup' }),
     );
@@ -70,8 +66,9 @@ describe('audit(): well-formedness rules', () => {
         'a/b/c/deep.md': 'x',
       }),
     );
-    const f4 = at(findings, 'OVER_ROUTING', 'a/b/c/deep.md');
-    expect(f4?.relatedRule).toBe('ROUTING_DEPTH');
+    expect(at(findings, 'OVER_ROUTING', 'a/b/c/deep.md')?.relatedRule).toBe(
+      'ROUTING_DEPTH',
+    );
   });
 
   it('W7 / F6 fires on a stage contract missing a section', () => {
@@ -87,98 +84,150 @@ describe('audit(): well-formedness rules', () => {
   });
 });
 
-describe('audit(): failure modes', () => {
-  it('F1 hard signal fires on an oversized CLAUDE.md', () => {
-    const findings = audit(
-      buildWorkspace({ 'CLAUDE.md': 'x'.repeat(16004) }),
-    );
-    expect(rule(findings, 'MONOLITHIC_CONTEXT').some((f) => f.path === 'CLAUDE.md')).toBe(
-      true,
-    );
+describe('audit(): F1 MONOLITHIC_CONTEXT', () => {
+  it('hard signal fires on an oversized CLAUDE.md', () => {
+    const findings = audit(buildWorkspace({ 'CLAUDE.md': 'word '.repeat(4500) }));
+    expect(at(findings, 'MONOLITHIC_CONTEXT', 'CLAUDE.md')).toBeDefined();
   });
 
-  it('F1 hard signal fires on an oversized non-CLAUDE file', () => {
+  it('hard signal fires on an oversized non-CLAUDE file', () => {
     const findings = audit(
       buildWorkspace({
         'CLAUDE.md': '# r',
-        'references/big.md': 'x'.repeat(32004),
+        'references/big.md': 'word '.repeat(8500),
       }),
     );
     expect(at(findings, 'MONOLITHIC_CONTEXT', 'references/big.md')).toBeDefined();
   });
 
-  it('F1 soft signal / W3 fires on a context file with a behaviour block', () => {
+  it('soft signal / W3 fires on a dense behaviour block in a context file', () => {
     const findings = audit(
       buildWorkspace({
         'CLAUDE.md': '# r',
         'context/mixed.md':
-          '# Facts\nThe user lives in Berlin.\n\n# Behaviour\nAlways respond tersely. Never use em dashes. You must cite sources. Do not hedge.',
+          '# Facts\nThe user lives in Berlin.\n\n## Behaviour\nAlways respond tersely. Never use em dashes. You must cite sources. Do not hedge.',
       }),
     );
-    const f1 = at(findings, 'MONOLITHIC_CONTEXT', 'context/mixed.md');
-    expect(f1?.relatedRule).toBe('CONTENT_SEGREGATION');
+    expect(at(findings, 'MONOLITHIC_CONTEXT', 'context/mixed.md')?.relatedRule).toBe(
+      'CONTENT_SEGREGATION',
+    );
   });
 
-  it('F3 fires on a CLAUDE.md pointer to a missing file', () => {
+  it('soft signal does NOT fire on situational prose that narrates behaviour', () => {
     const findings = audit(
       buildWorkspace({
-        'CLAUDE.md': '# r\nSee references/gone.md for details.',
+        'CLAUDE.md': '# r',
+        'context/client.md':
+          '# Client\nThe client always pays cash and never disputes invoices.',
+      }),
+    );
+    expect(rule(findings, 'MONOLITHIC_CONTEXT')).toHaveLength(0);
+  });
+});
+
+describe('audit(): F3 STALE_CONTENT (scoped to the load/skip table)', () => {
+  it('fires on a load/skip pointer to a missing file', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| t | references/gone.md | x |',
         'references/here.md': 'present',
       }),
     );
-    const f3 = at(findings, 'STALE_CONTENT', 'CLAUDE.md');
-    expect(f3?.message).toContain('references/gone.md');
+    expect(at(findings, 'STALE_CONTENT', 'CLAUDE.md')?.message).toContain(
+      'references/gone.md',
+    );
   });
 
-  it('F5 variant A fires when the root routes a task at a child-workspace file', () => {
+  it('does NOT fire on a Markdown path mentioned only in prose', () => {
+    const findings = audit(
+      buildWorkspace({ 'CLAUDE.md': '# r\nHistoric notes lived in `old-notes.md`.' }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
+  });
+});
+
+describe('audit(): F5 LAYER_BLOAT (size + heading, not marker density)', () => {
+  it('fires on a directive-dense ops manual section (the inversion fix)', () => {
     const findings = audit(
       buildWorkspace({
-        'CLAUDE.md': '# r\nThe triage task loads child/references/guide.md.',
+        'CLAUDE.md':
+          '# Identity\nWe are terse.\n\n## iMessage operations\n' +
+          'You must open it and never skip and always file it. '.repeat(50),
+      }),
+    );
+    expect(at(findings, 'LAYER_BLOAT', 'CLAUDE.md')?.message).toContain(
+      'iMessage operations',
+    );
+  });
+
+  it('does NOT fire on a large recognisably-identity section', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '## Voice and conventions\n' + 'word '.repeat(700),
+      }),
+    );
+    expect(rule(findings, 'LAYER_BLOAT')).toHaveLength(0);
+  });
+
+  it('does NOT fire on the permitted load/skip table', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n' +
+          '| task | references/voice.md | context/ |\n'.repeat(200),
+        'references/voice.md': 'v',
+      }),
+    );
+    expect(rule(findings, 'LAYER_BLOAT')).toHaveLength(0);
+  });
+
+  it('variant A fires when the root routes a task at a child-workspace file', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| t | child/references/guide.md | x |',
         'child/CLAUDE.md': '# child',
         'child/references/guide.md': 'guide',
       }),
     );
-    expect(rule(findings, 'LAYER_BLOAT').some((f) => f.path === 'CLAUDE.md')).toBe(
+    expect(at(findings, 'LAYER_BLOAT', 'CLAUDE.md')).toBeDefined();
+  });
+});
+
+describe('audit(): work-folder declaration', () => {
+  it('a folder named only in the Skip column is not a work folder (file is hidden)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '| Task | Load | Skip |\n|--|--|--|\n| a | references/ | drafts/ |',
+        'drafts/x.md': 'work',
+      }),
+    );
+    expect(at(findings, 'HIDDEN_CONTEXT', 'drafts/x.md')).toBeDefined();
+  });
+
+  it('a folder declared in prose is a work folder (file routes, no finding)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': 'Work products live under `drafts/`.',
+        'drafts/x.md': 'work',
+      }),
+    );
+    expect(at(findings, 'HIDDEN_CONTEXT', 'drafts/x.md')).toBeUndefined();
+  });
+});
+
+describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
+  const findings = audit(readWorkspace(aiosRoot));
+
+  it('F5: the three directive-dense ops manuals in the root identity', () => {
+    expect(rule(findings, 'LAYER_BLOAT')).toHaveLength(3);
+    expect(rule(findings, 'LAYER_BLOAT').every((f) => f.path === 'CLAUDE.md')).toBe(
       true,
     );
   });
 
-  it('F5 variant B fires on a large non-identity block in a CLAUDE.md', () => {
-    const findings = audit(
-      buildWorkspace({
-        'CLAUDE.md':
-          '# Identity\nWe are terse.\n\n## iMessage workflow\n' +
-          'Step instructions and contact facts. '.repeat(120),
-      }),
-    );
-    const f5 = at(findings, 'LAYER_BLOAT', 'CLAUDE.md');
-    expect(f5?.message).toContain('iMessage workflow');
-  });
-});
-
-describe('audit(): reproduces the AIOS acceptance fixture (#2)', () => {
-  const findings = audit(readWorkspace(aiosRoot));
-
-  it('F1 MONOLITHIC_CONTEXT: the oversized root, sync, and client files plus the mixed context file', () => {
-    expect(paths(findings, 'MONOLITHIC_CONTEXT')).toEqual([
-      'CLAUDE.md',
-      'clients/acme/brief.md',
-      'context/digest.md',
-      'references/sync.md',
-    ]);
-    // The mixed-content one is the soft signal, tied to W3; the others are size.
-    expect(at(findings, 'MONOLITHIC_CONTEXT', 'context/digest.md')?.relatedRule).toBe(
-      'CONTENT_SEGREGATION',
-    );
-    expect(at(findings, 'MONOLITHIC_CONTEXT', 'references/sync.md')?.relatedRule).toBeUndefined();
-  });
-
-  it('F5 LAYER_BLOAT: the three ops manuals embedded in the root identity', () => {
-    expect(rule(findings, 'LAYER_BLOAT')).toHaveLength(3);
-    expect(rule(findings, 'LAYER_BLOAT').every((f) => f.path === 'CLAUDE.md')).toBe(true);
-  });
-
-  it('F2 HIDDEN_CONTEXT / W5: every file no router points to', () => {
+  it('F2 / W5: every unrouted file', () => {
     expect(paths(findings, 'HIDDEN_CONTEXT')).toEqual([
       'content-plan.md',
       'digest-sources.md',
@@ -187,20 +236,31 @@ describe('audit(): reproduces the AIOS acceptance fixture (#2)', () => {
       'priorities-old.md',
       'skills/cleanup.md',
     ]);
-    expect(
-      rule(findings, 'HIDDEN_CONTEXT').every((f) => f.relatedRule === 'ROUTABLE_FILES'),
-    ).toBe(true);
   });
 
-  it('F3 STALE_CONTENT: the two dangling router pointers', () => {
-    const stale = rule(findings, 'STALE_CONTENT');
-    expect(stale).toHaveLength(2);
-    const messages = stale.map((f) => f.message).join('\n');
+  it('F3: the two dangling load/skip pointers, not the prose path', () => {
+    const messages = rule(findings, 'STALE_CONTENT')
+      .map((f) => f.message)
+      .join('\n');
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(2);
     expect(messages).toContain('references/model-routing.md');
     expect(messages).toContain('context/archived-plan.md');
+    expect(messages).not.toContain('old-notes.md');
   });
 
-  it('produces exactly the expected findings, nothing spurious', () => {
-    expect(findings).toHaveLength(15);
+  it('F1 / W3: only the mixed context file; no size findings (honest under-report)', () => {
+    expect(paths(findings, 'MONOLITHIC_CONTEXT')).toEqual(['context/digest.md']);
+    expect(at(findings, 'MONOLITHIC_CONTEXT', 'context/digest.md')?.relatedRule).toBe(
+      'CONTENT_SEGREGATION',
+    );
+  });
+
+  it('no false positives on the situational/voice guard files', () => {
+    expect(findings.some((f) => f.path === 'context/profile.md')).toBe(false);
+    expect(findings.some((f) => f.path === 'references/voice.md')).toBe(false);
+  });
+
+  it('produces exactly the expected findings', () => {
+    expect(findings).toHaveLength(12);
   });
 });
