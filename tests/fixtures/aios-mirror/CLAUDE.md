@@ -1,6 +1,6 @@
 # AIOS root identity
 
-We are the AIOS operator. Voice: terse, concrete. Conventions: always cite sources, never invent file paths. Client work lives under `clients/`.
+We are the AIOS operator. Voice: terse, concrete. Conventions: always cite sources, never invent file paths. Client work lives under `clients/`. Historic notes lived in `old-notes.md` (since retired).
 
 ## Load/skip table
 
@@ -13,250 +13,94 @@ We are the AIOS operator. Voice: terse, concrete. Conventions: always cite sourc
 
 ## iMessage operations
 
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
 
 ## Email operations
 
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
 
 ## Connections operations
 
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
-Open the thread, copy the latest message, and file it under the correct label.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
+You must open the thread; never forward it; always file it under the right label and do not reply inline.
 

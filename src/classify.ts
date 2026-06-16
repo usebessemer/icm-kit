@@ -33,7 +33,11 @@ import {
   nearestRoot,
   routingDepth,
 } from './paths.js';
-import { hasLoadSkipTable, mentionsToken, namedByClaudeMd } from './parse.js';
+import {
+  declaredWorkFolders,
+  hasLoadSkipTable,
+  namedByClaudeMd,
+} from './parse.js';
 
 /**
  * Classify one file path within its workspace (SPEC §2.5).
@@ -171,16 +175,12 @@ function isStageContract(relPath: string): boolean {
 }
 
 /**
- * True when `relPath`'s top-level folder is named as a work folder by the
- * enclosing CLAUDE.md: the folder appears with a trailing slash, and is not a
- * canonical home or a numbered stage folder.
+ * True when `relPath`'s top-level folder is one the enclosing CLAUDE.md
+ * declares as a work folder (§2.5). Declaration is resolved by `parse`, which
+ * excludes Skip-only mentions, canonical homes, and numbered stage folders.
  */
 function isUnderWorkFolder(relPath: string, claudeMd: string): boolean {
   const slash = relPath.indexOf('/');
   if (slash === -1) return false; // a work product lives under a folder
-  const folder = relPath.slice(0, slash);
-  if (folder === CANONICAL_HOMES.situational) return false;
-  if (folder === CANONICAL_HOMES.reference) return false;
-  if (STAGE_FOLDER_PATTERN.test(folder)) return false;
-  return mentionsToken(claudeMd, `${folder}/`);
+  return declaredWorkFolders(claudeMd).has(relPath.slice(0, slash));
 }

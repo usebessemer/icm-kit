@@ -30,8 +30,8 @@ describe('icm-kit audit (CLI)', () => {
   it('reports findings and exits non-zero on a non-compliant workspace', () => {
     const { status, stdout } = runAudit(aiosRoot);
     expect(status).toBe(1);
-    expect(stdout).toContain('MONOLITHIC_CONTEXT');
+    expect(stdout).toContain('LAYER_BLOAT');
     expect(stdout).toContain('HIDDEN_CONTEXT (enforces ROUTABLE_FILES)');
-    expect(stdout).toContain('15 finding(s).');
+    expect(stdout).toContain('12 finding(s).');
   }, 20000);
 });
