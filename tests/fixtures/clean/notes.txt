@@ -1,0 +1,3 @@
+A non-Markdown file. The classification table only matches *.md, so this is
+unclassified. Hidden context (F2) is scoped to *.md, so the audit runner will
+not flag it; that policy lives in the rule, not the classifier.
