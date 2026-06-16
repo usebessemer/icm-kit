@@ -128,7 +128,7 @@ A workspace is **ICM-compliant** if and only if all the following hold. Each rul
 - **W4 (`NESTED_INTEGRITY`).** Every directory containing a `CLAUDE.md` constitutes a workspace boundary, and W1-W3 hold for that nested workspace.
 - **W5 (`ROUTABLE_FILES`).** Every file in the workspace is reachable through a routing path: either its canonical location implies its load rule, or the enclosing workspace's `CLAUDE.md` mentions it by name or pattern.
 - **W6 (`ROUTING_DEPTH`).** Workspace routing depth (per §2.2) is at most 3.
-- **W7 (`STAGE_CONTRACT_SHAPE`).** Every `CONTEXT.md` file located in a numbered stage folder (pattern `NN-name/CONTEXT.md`) contains all four required section headings (`## Input`, `## Process`, `## Output`, `## Completion`), and each section has non-empty content.
+- **W7 (`STAGE_CONTRACT_SHAPE`).** Every `CONTEXT.md` file located in a numbered stage folder (pattern `NN-name/CONTEXT.md`) contains all four required section headings (`## Input`, `## Process`, `## Output`, `## Completion`; matched case-insensitively, tolerating a trailing plural), and each section has non-empty content.
 
 ---
 
@@ -141,8 +141,8 @@ Each failure mode is a lint rule, carrying a stable code (`F1` through `F6`, in 
 A single file at any routing level grown so large or so mixed in content that it dominates the context window or violates content-type segregation.
 
 **Detection (v0.1):**
-- Hard signal: file size exceeds a threshold. Defaults: `CLAUDE.md` over 4,000 tokens; any other single file over 8,000 tokens. Token counts use tiktoken `cl100k_base` as a proxy for Claude's tokenizer (see paper appendix). Thresholds are configurable.
-- Soft signal: a single file contains content of more than one content type, and the file is not a `CLAUDE.md` (which is the only file permitted to mix identity and operations).
+- Hard signal: file size exceeds a threshold. Defaults: `CLAUDE.md` over 4,000 tokens; any other single file over 8,000 tokens. Token counts use tiktoken `cl100k_base` (wired via `js-tiktoken` in v0.1) as a proxy for Claude's tokenizer (see paper appendix); an unreadable or non-UTF-8 file falls back to a byte-based estimate so a binary monolith still trips the guard. Thresholds are configurable and stay at the defaults: a crude guard for egregiously large files, deliberately not tuned to reproduce any one hand-audit (see §5 open question 3).
+- Soft signal: a single file (other than a `CLAUDE.md`, the only file permitted to mix identity and operations) contains content of more than one content type. v0.1 detects the common case: a non-identity file carrying a dense, contiguous block of behavioural directives. Detection is density-normalised, so a situational fact that merely narrates behaviour ("the client always pays cash") does not trip it; only a genuine rules block does.
 
 **Severity:** warning.
 
@@ -159,8 +159,8 @@ A file that exists in the workspace tree but has no routing path. The agent will
 Loaded content that no longer reflects current truth: load/skip tables out of sync with the file tree, references to retired conventions, situational facts marked as active that are no longer accurate.
 
 **Detection (v0.1 partial):**
-- Load/skip table references a file that does not exist.
-- Load/skip table omits a file present in a canonical work folder.
+- The load/skip table references a file that does not exist. Pointers are read from the load/skip table rows only, not from prose, so template paths (`YYYY-MM-DD.md`) and cross-repo example paths mentioned in prose do not produce spurious findings.
+- Load/skip table omits a file present in a canonical work folder (deferred: needs the load/skip-table format pinned, §5).
 - Time-based heuristics (file age, last-modified vs git activity) are deferred to v0.2.
 
 **Severity:** warning.
@@ -181,8 +181,8 @@ Content at the wrong routing level. The most common variants:
 - Long-form situational facts baked into a `CLAUDE.md` instead of split out to `context/`.
 
 **Detection (v0.1):**
-- Root `CLAUDE.md` contains a load/skip table whose tasks reference files only present inside a child workspace.
-- `CLAUDE.md` contains contiguous prose blocks above a configurable size threshold (default: 500 tokens) that match the shape of situational content (factual statements, no rules or directives) rather than identity.
+- Root `CLAUDE.md`'s load/skip table routes a task at a file that lives only inside a child workspace.
+- `CLAUDE.md` contains a section above a configurable size threshold (default: 500 tokens) that is neither the permitted load/skip table (§2.3) nor recognisably identity content. This covers both misplaced operations prose (per-tool ops manuals) and long-form situational facts that belong in `context/` or a child workspace. v0.1 recognises identity by heading shape, **not** marker density: real ops manuals are directive-dense (`must`/`never`/`always`), so a density filter would invert and wrongly exempt them, while keying off size plus a non-identity heading catches them. The heuristic is coarse and heading-dependent, and the identity preamble is exempt (F1 backstops a headingless monolith); refining the identity-vs-operations signal is deferred (§5).
 
 **Severity:** warning.
 
@@ -190,7 +190,7 @@ Content at the wrong routing level. The most common variants:
 
 A stage contract `CONTEXT.md` missing one or more of the required IPO + C sections, or with an empty section.
 
-**Detection:** Parse headings; verify all four sections (`## Input`, `## Process`, `## Output`, `## Completion`) are present, and each has at least one non-empty line of content beneath it.
+**Detection:** Parse headings; verify all four sections (`## Input`, `## Process`, `## Output`, `## Completion`) are present, and each has at least one non-empty line of content beneath it. Heading matching is case-insensitive and tolerates a trailing plural (`## Inputs` satisfies `Input`).
 
 **Severity:** warning.
 
@@ -222,4 +222,4 @@ Items where the spec picked a precise answer but the answer is genuinely contest
 
 1. **Workspace boundary detection.** v0.1 uses the presence of a `CLAUDE.md` as the sole workspace-boundary signal. Alternative: detect by the presence of an L0-shaped folder set (`context/` + `references/` + work folder). v0.1 picks the simpler rule; revisit if it produces false negatives.
 2. **Mixed-content allowance in `CLAUDE.md`.** The spec allows identity + operations in `CLAUDE.md`. The paper's Identity vs Operations section suggests these may eventually separate (into `CONTEXT.md` per stage). v0.1 retains mixed `CLAUDE.md` for simple workspaces; the separated form is recognised at L2 via stage contracts.
-3. **Default thresholds.** 4,000 tokens for `CLAUDE.md`, 8,000 for other single files, 500 tokens for the layer-bloat prose-block heuristic, depth 3 for over-routing. These are educated guesses tied to the paper's measurements. Expect tuning once the linter runs against AIOS.
+3. **Default thresholds.** 4,000 tokens for `CLAUDE.md`, 8,000 for other single files, 500 tokens for the layer-bloat prose-block heuristic, depth 3 for over-routing. These are educated guesses tied to the paper's measurements. The v0.1 stance is **honest under-reporting**: the caps are a crude guard for egregiously large files and are deliberately not back-calculated to reproduce a hand-audit. A file a human calls "monolithic" by judgement (a 15KB root, a 21KB client doc) may sit under the size caps and be caught instead by `LAYER_BLOAT` / W3, or not mechanically caught at all. The audit reporting fewer findings than a hand-audit is the correct outcome, not a bug to tune away. Expect calibration once the linter runs against the real AIOS tree.
