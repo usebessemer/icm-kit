@@ -11,8 +11,32 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Workspace, WorkspaceFile } from '../../src/workspace.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Build an in-memory Workspace from a `path -> content` map, for rule tests
+ * that need a precise tree without committing fixture directories. Mirrors the
+ * shape `readWorkspace` produces.
+ */
+export function buildWorkspace(contents: Record<string, string>): Workspace {
+  const files: WorkspaceFile[] = Object.keys(contents)
+    .sort()
+    .map((path) => ({
+      path,
+      content: contents[path],
+      bytes: Buffer.byteLength(contents[path], 'utf8'),
+    }));
+  const tree = files.map((f) => f.path);
+  const claudeMd = new Map<string, string>();
+  for (const file of files) {
+    if (file.path === 'CLAUDE.md' || file.path.endsWith('/CLAUDE.md')) {
+      claudeMd.set(file.path, file.content);
+    }
+  }
+  return { root: '/virtual', files, tree, claudeMd };
+}
 
 /** Inputs to `classify()`, mirroring the SPEC §2.5 signature. */
 export interface WorkspaceFixture {
