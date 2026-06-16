@@ -45,6 +45,8 @@ Routing levels are **relative to the workspace being audited**. The root `CLAUDE
 
 **Routing depth** is the count of `CLAUDE.md` files in a file's lineage from the audit root to the deepest `CLAUDE.md` whose workspace contains it. The audit root itself counts as depth 1. A file in a nested workspace inside that root has depth 2. Depth above 3 triggers the over-routing failure mode (§4.4).
 
+**Audit-frame reporting.** Routing level is always reported relative to the workspace being audited (the audit frame), not relative to a file's own workspace. A nested workspace's `CLAUDE.md` is L0 *of its own workspace* yet is reported as **L1** when audited from an enclosing root; its contents are reported at L1 as well (or L2 for a stage contract). This resolves the apparent tension in the §2.5 table between "L0 of its workspace" (the `CLAUDE.md` row) and "L1 (from parent)" (the nested-subdirectory row): both describe the same nested `CLAUDE.md`, and the audit reports the latter. In frame terms, depth 1 is L0 and any deeper nesting is L1.
+
 ### 2.3 Content types (horizontal axis, type half)
 
 Every classified file holds exactly one of four content types:
@@ -87,7 +89,7 @@ Default classification table (matched in order; first match wins):
 
 | Path pattern (relative to enclosing workspace root) | content_type | load_pattern | routing_level |
 |---|---|---|---|
-| `CLAUDE.md` | identity (+ operations if a load/skip table is present) | always | L0 of its workspace |
+| `CLAUDE.md` | identity (+ operations if a load/skip table is present) | always | L0 of its workspace (L1 when nested; reported in the audit frame, §2.2) |
 | `context/**/*.md` | situational | always | scope of enclosing workspace |
 | `references/**/*.md` | reference | on_demand | scope of enclosing workspace |
 | Numbered stage folder, e.g. `NN-name/CONTEXT.md` | reference (stage contract) | on_demand | L2 |
@@ -95,7 +97,7 @@ Default classification table (matched in order; first match wins):
 | Subdirectory containing its own `CLAUDE.md` | introduces an L1 workspace; classify its contents recursively in that workspace's frame | n/a | L1 (from parent) |
 | Any other `*.md` not matched above | unclassified → reported as Hidden context (§4.2) | n/a | n/a |
 
-Files referenced explicitly by a `CLAUDE.md`'s load/skip table override the default classification: they are classified as that table entry indicates (`reference` or `working` as the rule specifies).
+Files referenced explicitly by a `CLAUDE.md`'s load/skip table are routed by that reference. In v0.1 this acts as a **fallback**, evaluated after the default-table rows above: a load/skip mention rescues a file that no default row matched (it routes `on_demand` as a `reference`, satisfying W5), but it does **not** override the classification of a file already matched by its canonical home (rows 1 to 5 take precedence). Full **type-precedence**, where a table entry reclassifies a canonical-home file as `reference` or `working` per an explicit per-file load rule, requires parsing the load/skip table's per-file type assignments, whose format is not yet pinned (§5); it is deferred to v0.2. Until then, a canonical-home match wins.
 
 ### 2.6 Stage contracts
 
@@ -201,6 +203,7 @@ Explicitly deferred to later versions:
 - **Vendor parity** beyond `CLAUDE.md`. `AGENTS.md` and other vendor variants are conceptually the same role but are not recognised by the v0.1 classifier.
 - **Time-based stale-content heuristics.** File age and git activity as signals for `STALE_CONTENT` are deferred to v0.2.
 - **Task-type taxonomy.** Load/skip table task identifiers are parsed as opaque strings; no external vocabulary is validated.
+- **Load/skip-table type-precedence.** v0.1 treats an explicit load/skip mention as a routability fallback (it rescues otherwise-unclassified files; §2.5). Reclassifying a canonical-home file through an explicit per-file load rule (full type-precedence) needs a pinned table format and is deferred to v0.2.
 - **Severity tiers beyond warning.** No `error` severity in v0.1; everything is advisory.
 - **Configuration surface.** Thresholds, alternative folder names, and ignore lists are configurable in principle; the spec does not yet pin the configuration file format.
 - **Output format for `audit`.** Reporting structure (text, JSON, SARIF) is the tool's concern, not the spec's.
