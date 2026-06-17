@@ -34,7 +34,7 @@ program
 
 function report(findings: readonly Finding[]): void {
   if (findings.length === 0) {
-    console.log('No findings: workspace is ICM-compliant against SPEC v0.1.');
+    console.log('No findings: workspace is ICM-compliant against SPEC v0.2.');
     return;
   }
   for (const f of findings) {

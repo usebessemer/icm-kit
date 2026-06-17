@@ -260,6 +260,21 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
     expect(findings.some((f) => f.path === 'references/voice.md')).toBe(false);
   });
 
+  it('the harness routing homes (#13) produce no findings', () => {
+    const routed = [
+      '.memory/some-note.md',
+      '.claude/skills/example/SKILL.md',
+      '02-build/CONTEXT.md',
+      '02-build/spec.md',
+    ];
+    expect(findings.some((f) => routed.includes(f.path))).toBe(false);
+  });
+
+  it('the undotted memory/skills orphans still flag (exact-path precision)', () => {
+    expect(at(findings, 'HIDDEN_CONTEXT', 'memory/note-1.md')).toBeDefined();
+    expect(at(findings, 'HIDDEN_CONTEXT', 'skills/cleanup.md')).toBeDefined();
+  });
+
   it('produces exactly the expected findings', () => {
     expect(findings).toHaveLength(12);
   });

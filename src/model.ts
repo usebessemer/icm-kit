@@ -1,7 +1,7 @@
 /**
  * The ICM rule model.
  *
- * This module is the TypeScript encoding of SPEC.md (SPEC v0.1). It is the
+ * This module is the TypeScript encoding of SPEC.md (SPEC v0.2). It is the
  * single source both `init` and `audit` consume: the classification axes
  * (SPEC §2.2 to §2.4), the classification result shape (§2.5), the
  * well-formedness rules (§3), and the failure modes (§4).
@@ -200,13 +200,26 @@ export const ROOT_IDENTITY_FILE = 'CLAUDE.md';
 /** The stage-contract filename inside a numbered stage folder (SPEC §2.6). */
 export const STAGE_CONTRACT_FILE = 'CONTEXT.md';
 
+/** The skill-definition filename inside an auto-discovered skill (SPEC §2.5). */
+export const SKILL_FILE = 'SKILL.md';
+
 /** Matches a numbered stage folder, e.g. `01-discovery` (SPEC §2.6, W7). */
 export const STAGE_FOLDER_PATTERN = /^\d{2,}-[A-Za-z0-9][\w-]*$/;
 
-/** Canonical home folders implied by content type (SPEC §2.3). */
+/**
+ * Canonical home folders the classifier routes by location (SPEC §2.3, §2.5).
+ *
+ * `context` and `references` are the workspace homes. `memory` and `skill` are
+ * Claude-Code harness homes at fixed paths (`.memory/` is always loaded; skills
+ * are auto-discovered under `.claude/skills/`), routed as hard-coded defaults
+ * because the harness puts them there on every install and no `CLAUDE.md` load
+ * table declares them. Site-specific renamed homes are deferred (SPEC §5 q4).
+ */
 export const CANONICAL_HOMES = {
   situational: 'context',
   reference: 'references',
+  memory: '.memory',
+  skill: '.claude/skills',
 } as const;
 
 /** The four required stage-contract sections, in spec order (SPEC §2.6, W7). */

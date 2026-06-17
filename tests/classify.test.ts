@@ -163,3 +163,72 @@ describe('classify(): nested L1 workspaces (§2.2)', () => {
     );
   });
 });
+
+describe('classify(): harness routing homes (#13, §2.5)', () => {
+  const tree = [
+    'CLAUDE.md',
+    '.memory/note.md',
+    '.claude/skills/example/SKILL.md',
+    '.claude/skills/stray.md',
+    '02-build/CONTEXT.md',
+    '02-build/spec.md',
+    'memory/note.md',
+    'skills/cleanup.md',
+  ];
+  const claudeMd = new Map([['CLAUDE.md', '# root']]);
+  const c = (path: string): Classification => classify(path, tree, claudeMd);
+
+  it('routes the .memory store as situational / always', () => {
+    expect(c('.memory/note.md')).toEqual(
+      expected({
+        path: '.memory/note.md',
+        routingLevel: 'L0',
+        contentType: 'situational',
+        loadPattern: 'always',
+      }),
+    );
+  });
+
+  it('routes a .claude/skills/<slug>/SKILL.md as reference / on_demand', () => {
+    expect(c('.claude/skills/example/SKILL.md')).toEqual(
+      expected({
+        path: '.claude/skills/example/SKILL.md',
+        routingLevel: 'L0',
+        contentType: 'reference',
+        loadPattern: 'on_demand',
+      }),
+    );
+  });
+
+  it('routes a numbered-stage working file as working / per_item / L2', () => {
+    expect(c('02-build/spec.md')).toEqual(
+      expected({
+        path: '02-build/spec.md',
+        routingLevel: 'L2',
+        contentType: 'working',
+        loadPattern: 'per_item',
+      }),
+    );
+  });
+
+  it('still classifies the stage CONTEXT.md as the contract (precedence)', () => {
+    expect(c('02-build/CONTEXT.md')).toEqual(
+      expected({
+        path: '02-build/CONTEXT.md',
+        routingLevel: 'L2',
+        contentType: 'reference',
+        loadPattern: 'on_demand',
+        stageContract: true,
+      }),
+    );
+  });
+
+  it('does not mistype a stray skills file as a skill (precision)', () => {
+    expect(c('.claude/skills/stray.md').unclassified).toBe(true);
+  });
+
+  it('leaves undotted memory/ and skills/ folders unclassified (exact path only)', () => {
+    expect(c('memory/note.md').unclassified).toBe(true);
+    expect(c('skills/cleanup.md').unclassified).toBe(true);
+  });
+});
