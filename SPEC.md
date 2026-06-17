@@ -1,4 +1,4 @@
-# ICM Spec: v0.1
+# ICM Spec: v0.2
 
 This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the two tools in `icm-kit`: `init`, which generates structures that satisfy the spec, and `audit`, which checks structures against it.
 
@@ -52,9 +52,11 @@ Routing levels are **relative to the workspace being audited**. The root `CLAUDE
 Every classified file holds exactly one of four content types:
 
 - **identity**: who the agent is at this scope. Conventions, voice rules, behavioural patterns, mode declarations. Declarative and durable. Canonical home: `CLAUDE.md`.
-- **situational**: always-relevant facts about the user or project that are not identity statements. Active state. Canonical home: `context/`.
-- **reference**: durable, cross-cutting knowledge loaded on demand by task type. Canonical home: `references/`.
-- **working**: per-task work products created and consumed during execution. Canonical home: a work folder (`projects/`, `chapters/`, `clients/`, numbered engagement stages, etc.).
+- **situational**: always-relevant facts about the user or project that are not identity statements. Active state. Canonical homes: `context/`, and the harness agent-memory store `.memory/` (always loaded, never declared in a load table).
+- **reference**: durable, cross-cutting knowledge loaded on demand by task type. Canonical homes: `references/`, and auto-discovered skills at `.claude/skills/<slug>/SKILL.md`.
+- **working**: per-task work products created and consumed during execution. Canonical home: a work folder (`projects/`, `chapters/`, `clients/`, numbered engagement stages, etc.), including the non-`CONTEXT.md` files of a numbered stage folder.
+
+The `.memory/` and `.claude/skills/` homes are Claude-Code harness conventions at fixed paths, recognised as hard-coded defaults because the harness places them identically on every install and no `CLAUDE.md` load table declares them. Site-specific renamed homes are out of scope for v0.2 (§5 open question 4).
 
 **Stage contracts** are a subtype of `reference` with a specific four-section shape. They live at L2 and are specified in detail in §2.6.
 
@@ -91,8 +93,11 @@ Default classification table (matched in order; first match wins):
 |---|---|---|---|
 | `CLAUDE.md` | identity (+ operations if a load/skip table is present) | always | L0 of its workspace (L1 when nested; reported in the audit frame, §2.2) |
 | `context/**/*.md` | situational | always | scope of enclosing workspace |
+| `.memory/**/*.md` | situational | always | scope of enclosing workspace |
 | `references/**/*.md` | reference | on_demand | scope of enclosing workspace |
+| `.claude/skills/<slug>/SKILL.md` | reference | on_demand | scope of enclosing workspace |
 | Numbered stage folder, e.g. `NN-name/CONTEXT.md` | reference (stage contract) | on_demand | L2 |
+| `NN-name/*.md` other than `CONTEXT.md` (a stage working file) | working | per_item | L2 |
 | Any `*.md` under a folder mentioned in the enclosing `CLAUDE.md` as a work folder | working | per_item | scope of enclosing workspace |
 | Subdirectory containing its own `CLAUDE.md` | introduces an L1 workspace; classify its contents recursively in that workspace's frame | n/a | L1 (from parent) |
 | Any other `*.md` not matched above | unclassified → reported as Hidden context (§4.2) | n/a | n/a |
@@ -212,7 +217,7 @@ Explicitly deferred to later versions:
 
 ## 6. Versioning
 
-This is **SPEC v0.1**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+This is **SPEC v0.2**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x); v0.2 adds the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table. The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
 
 ---
 
@@ -223,3 +228,4 @@ Items where the spec picked a precise answer but the answer is genuinely contest
 1. **Workspace boundary detection.** v0.1 uses the presence of a `CLAUDE.md` as the sole workspace-boundary signal. Alternative: detect by the presence of an L0-shaped folder set (`context/` + `references/` + work folder). v0.1 picks the simpler rule; revisit if it produces false negatives.
 2. **Mixed-content allowance in `CLAUDE.md`.** The spec allows identity + operations in `CLAUDE.md`. The paper's Identity vs Operations section suggests these may eventually separate (into `CONTEXT.md` per stage). v0.1 retains mixed `CLAUDE.md` for simple workspaces; the separated form is recognised at L2 via stage contracts.
 3. **Default thresholds.** 4,000 tokens for `CLAUDE.md`, 8,000 for other single files, 500 tokens for the layer-bloat prose-block heuristic, depth 3 for over-routing. These are educated guesses tied to the paper's measurements. The v0.1 stance is **honest under-reporting**: the caps are a crude guard for egregiously large files and are deliberately not back-calculated to reproduce a hand-audit. A file a human calls "monolithic" by judgement (a 15KB root, a 21KB client doc) may sit under the size caps and be caught instead by `LAYER_BLOAT` / W3, or not mechanically caught at all. The audit reporting fewer findings than a hand-audit is the correct outcome, not a bug to tune away. Expect calibration once the linter runs against the real AIOS tree.
+4. **Configurable recognised homes.** v0.2 hard-codes the harness homes (`.memory/`, `.claude/skills/`) and the workspace homes (`context/`, `references/`). An install that renames a home (`context/` to `docs/`, etc.) cannot yet declare it: that needs a `recognizedHomes` config option, which widens the `classify(path, tree, claudeMd)` signature and pins a config-file format. Deferred; the hard-coded harness defaults are enough to route the common case.

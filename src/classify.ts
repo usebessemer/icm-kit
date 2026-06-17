@@ -22,6 +22,7 @@ import {
   CANONICAL_HOMES,
   IMPLIED_LOAD_PATTERN,
   ROOT_IDENTITY_FILE,
+  SKILL_FILE,
   STAGE_CONTRACT_FILE,
   STAGE_FOLDER_PATTERN,
 } from './model.js';
@@ -89,8 +90,30 @@ export function classify(
     });
   }
 
+  // Row 2b: .memory/**/*.md -> situational, always. The harness agent-memory
+  // store: loaded every session, never declared in a load table (§2.5).
+  if (isUnderCanonicalHome(relPath, CANONICAL_HOMES.memory)) {
+    return result({
+      path: filePath,
+      routingLevel: baseLevel,
+      contentType: 'situational',
+      loadPattern: IMPLIED_LOAD_PATTERN.situational,
+    });
+  }
+
   // Row 3: references/**/*.md -> reference, on_demand.
   if (isUnderCanonicalHome(relPath, CANONICAL_HOMES.reference)) {
+    return result({
+      path: filePath,
+      routingLevel: baseLevel,
+      contentType: 'reference',
+      loadPattern: IMPLIED_LOAD_PATTERN.reference,
+    });
+  }
+
+  // Row 3b: .claude/skills/<slug>/SKILL.md -> reference, on_demand. An
+  // auto-discovered skill: harness-loaded, not load-table-enumerated (§2.5).
+  if (isSkillFile(relPath)) {
     return result({
       path: filePath,
       routingLevel: baseLevel,
@@ -107,6 +130,17 @@ export function classify(
       contentType: 'reference',
       loadPattern: IMPLIED_LOAD_PATTERN.reference,
       stageContract: true,
+    });
+  }
+
+  // Row 4b: NN-name/*.md other than CONTEXT.md -> working, per_item, at L2. The
+  // stage's genuine working artifacts, siblings of the stage contract (§2.6).
+  if (isStageWorkingFile(relPath)) {
+    return result({
+      path: filePath,
+      routingLevel: 'L2',
+      contentType: 'working',
+      loadPattern: IMPLIED_LOAD_PATTERN.working,
     });
   }
 
@@ -172,6 +206,27 @@ function isUnderCanonicalHome(relPath: string, home: string): boolean {
 function isStageContract(relPath: string): boolean {
   if (baseName(relPath) !== STAGE_CONTRACT_FILE) return false;
   return STAGE_FOLDER_PATTERN.test(baseName(dirOf(relPath)));
+}
+
+/**
+ * True for a stage working file: any `*.md` in a numbered stage folder other
+ * than the stage contract itself (SPEC §2.5, §2.6). A sibling of the contract,
+ * routed as the stage's per-item work product.
+ */
+function isStageWorkingFile(relPath: string): boolean {
+  if (!isMarkdown(relPath)) return false;
+  if (baseName(relPath) === STAGE_CONTRACT_FILE) return false;
+  return STAGE_FOLDER_PATTERN.test(baseName(dirOf(relPath)));
+}
+
+/**
+ * True only for `.claude/skills/<slug>/SKILL.md` (SPEC §2.5). A dedicated
+ * predicate, not a generic `.claude/skills/` prefix, so a stray file in the
+ * skills tree is not mistyped as a skill definition.
+ */
+function isSkillFile(relPath: string): boolean {
+  if (baseName(relPath) !== SKILL_FILE) return false;
+  return dirOf(dirOf(relPath)) === CANONICAL_HOMES.skill;
 }
 
 /**
