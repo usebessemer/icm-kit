@@ -275,6 +275,14 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
     expect(at(findings, 'HIDDEN_CONTEXT', 'skills/cleanup.md')).toBeDefined();
   });
 
+  it('does not size-flag a large binary file (#14)', () => {
+    expect(findings.some((f) => f.path === 'report.pdf')).toBe(false);
+  });
+
+  it('does not audit the skipped archives/ directory (#14)', () => {
+    expect(findings.some((f) => f.path.startsWith('archives/'))).toBe(false);
+  });
+
   it('produces exactly the expected findings', () => {
     expect(findings).toHaveLength(12);
   });

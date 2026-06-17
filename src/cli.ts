@@ -24,17 +24,27 @@ program
   .command('audit')
   .description('Check an existing workspace against the ICM spec')
   .argument('[path]', 'workspace root to audit', '.')
-  .action((path: string) => {
-    const findings = audit(readWorkspace(resolve(path)));
+  .option(
+    '--ignore <names>',
+    'comma-separated file/dir names to skip, merged with the defaults',
+  )
+  .action((path: string, options: { ignore?: string }) => {
+    const ignore = options.ignore
+      ? options.ignore
+          .split(',')
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : undefined;
+    const findings = audit(readWorkspace(resolve(path), { ignore }));
     report(findings);
-    // v0.1 output and exit policy are the tool's concern (SPEC §5): a clean
+    // Output and exit policy are the tool's concern (SPEC §5): a clean
     // workspace exits 0, any finding exits non-zero so checks can gate on it.
     if (findings.length > 0) process.exitCode = 1;
   });
 
 function report(findings: readonly Finding[]): void {
   if (findings.length === 0) {
-    console.log('No findings: workspace is ICM-compliant against SPEC v0.2.');
+    console.log('No findings: workspace is ICM-compliant against SPEC v0.3.');
     return;
   }
   for (const f of findings) {
