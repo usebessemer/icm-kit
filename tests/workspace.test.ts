@@ -39,4 +39,32 @@ describe('readWorkspace()', () => {
   it('sorts the tree deterministically', () => {
     expect([...ws.tree]).toEqual([...ws.tree].sort());
   });
+
+  it('marks a UTF-8 file as text regardless of extension', () => {
+    expect(ws.files.find((f) => f.path === 'notes.txt')?.isText).toBe(true);
+  });
+});
+
+const aiosRoot = join(here, 'fixtures', 'aios-mirror');
+
+describe('readWorkspace(): binary sniff and ignore (#14)', () => {
+  const ws = readWorkspace(aiosRoot);
+
+  it('flags a binary file (NUL in head) as not text, with empty content', () => {
+    const pdf = ws.files.find((f) => f.path === 'report.pdf');
+    expect(pdf?.isText).toBe(false);
+    expect(pdf?.content).toBe('');
+    expect(pdf?.bytes).toBeGreaterThan(0);
+  });
+
+  it('skips the archives/ directory by default', () => {
+    expect(ws.tree.some((p) => p.startsWith('archives/'))).toBe(false);
+  });
+
+  it('merges a caller ignore set with the defaults (name-based)', () => {
+    const pruned = readWorkspace(aiosRoot, { ignore: ['memory'] });
+    expect(pruned.tree.some((p) => p.startsWith('memory/'))).toBe(false);
+    // `.memory` is a different name and is not ignored.
+    expect(pruned.tree.some((p) => p.startsWith('.memory/'))).toBe(true);
+  });
 });
