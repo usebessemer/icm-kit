@@ -145,6 +145,27 @@ describe('audit(): F3 STALE_CONTENT (scoped to the load/skip table)', () => {
     );
     expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
   });
+
+  it('does NOT fire on a qualified bare-name that resolves in the same cell', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| catalog | `references/kit/` (catalog + `_template.md`) | x |',
+        'references/kit/_template.md': 'template',
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
+  });
+
+  it('does NOT fire on a bare structural-convention name (CONTEXT.md)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          "## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| handoff | the target stage's `CONTEXT.md` | x |",
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
+  });
 });
 
 describe('audit(): F5 LAYER_BLOAT (size + heading, not marker density)', () => {

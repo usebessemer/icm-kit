@@ -79,19 +79,59 @@ function loadSkipTableRows(content: string): string[] {
  */
 const MD_POINTER = /(?<![\w:/.-])((?:[\w.-]+\/)*[\w.-]+\.md)/gi;
 
+/** A directory path fragment ending in `/`, e.g. `references/kit/`. */
+const DIR_TOKEN = /(?<![\w:/.-])((?:[\w.-]+\/)+)/g;
+
+/** Basenames that recur as a per-folder convention rather than naming a file. */
+const STRUCTURAL_NAMES: ReadonlySet<string> = new Set([
+  'CONTEXT.md',
+  'CLAUDE.md',
+]);
+
+/** A Markdown reference found in a load/skip table cell (F3). */
+export interface LoadSkipReference {
+  /** The `.md` token as written (bare like `_template.md`, or qualified). */
+  readonly token: string;
+  /**
+   * True for a bare structural-convention basename (`CONTEXT.md`, `CLAUDE.md`)
+   * with no qualifying directory: a generic placeholder, not a concrete pointer.
+   */
+  readonly structural: boolean;
+  /** Workspace-relative paths to test for existence, in resolution order. */
+  readonly candidates: string[];
+}
+
 /**
- * Markdown paths referenced by a CLAUDE.md's load/skip table (F3).
+ * Markdown references in a CLAUDE.md's load/skip table (F3), resolved within
+ * the cell they appear in.
  *
- * Scoped to the load/skip table rows (SPEC §4.3), not the whole document, so
- * prose mentions, template paths (`YYYY-MM-DD.md`), and cross-repo example
- * paths no longer produce spurious stale-pointer findings.
+ * Scoped to the table rows (SPEC §4.3), not the whole document, so prose and
+ * template paths do not produce findings. Within a cell, a bare name is also
+ * resolved against any directory token in the same cell (a `dir/` + bare
+ * `file.md` pair yields the candidate `dir/file.md`), and a bare structural
+ * basename is flagged so the caller can treat it as a placeholder, not a
+ * dangling pointer.
  */
-export function extractLoadSkipPointers(content: string): string[] {
-  const out = new Set<string>();
+export function extractLoadSkipReferences(content: string): LoadSkipReference[] {
+  const refs: LoadSkipReference[] = [];
   for (const row of loadSkipTableRows(content)) {
-    for (const match of row.matchAll(MD_POINTER)) out.add(match[1]);
+    for (const cell of row.split('|')) {
+      const tokens = [...cell.matchAll(MD_POINTER)].map((m) => m[1]);
+      if (tokens.length === 0) continue;
+      const dirs = [...cell.matchAll(DIR_TOKEN)].map((m) => m[1]);
+      for (const token of tokens) {
+        const bare = !token.includes('/');
+        const candidates = [token];
+        if (bare) {
+          for (const dir of dirs) candidates.push(`${dir}${token}`);
+        }
+        const structural =
+          bare && dirs.length === 0 && STRUCTURAL_NAMES.has(token);
+        refs.push({ token, structural, candidates });
+      }
+    }
   }
-  return [...out];
+  return refs;
 }
 
 // ---------------------------------------------------------------------------

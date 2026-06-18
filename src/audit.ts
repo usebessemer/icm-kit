@@ -19,7 +19,10 @@
  *   that is neither the load/skip table nor a recognisably identity heading.
  *   Coarse and heading-dependent by design (SPEC §4.5, v0.1 limitation).
  * - F3 STALE_CONTENT reads pointers from the load/skip table only (SPEC §4.3),
- *   not prose; the omission bullet and time-based heuristics are deferred.
+ *   not prose, and resolves each within its cell: a bare name is tried against
+ *   a same-cell directory token, and a bare structural basename (CONTEXT.md /
+ *   CLAUDE.md) is treated as a placeholder. The omission bullet and time-based
+ *   heuristics are deferred.
  * - F1 size caps stay at the spec defaults: a crude "egregiously huge" guard,
  *   not tuned to reproduce any hand-audit (SPEC §5 q3).
  */
@@ -35,13 +38,14 @@ import {
 import type { Classification, Finding, Severity, Thresholds } from './model.js';
 import { baseName, dirOf, isMarkdown, routingDepth } from './paths.js';
 import {
-  extractLoadSkipPointers,
+  extractLoadSkipReferences,
   hasBehaviourBlock,
   hasLoadSkipTable,
   isIdentityHeading,
   parseStageContract,
   splitSections,
 } from './parse.js';
+import type { LoadSkipReference } from './parse.js';
 import { DEFAULT_TOKEN_COUNTER } from './tokens.js';
 import type { TokenCounter } from './tokens.js';
 import type { Workspace, WorkspaceFile } from './workspace.js';
@@ -259,16 +263,34 @@ function checkStaleContent(
   findings: Finding[],
 ): void {
   const root = dirOf(claudePath);
-  for (const pointer of extractLoadSkipPointers(content)) {
-    const resolved = root === '' ? pointer : `${root}/${pointer}`;
-    if (treeSet.has(resolved) || treeSet.has(pointer)) continue;
+  for (const ref of extractLoadSkipReferences(content)) {
+    if (ref.structural) continue; // a per-folder convention placeholder
+    if (resolveExisting(ref, root, treeSet) !== undefined) continue;
     findings.push({
       rule: F.F3,
       severity: WARNING,
       path: claudePath,
-      message: `Load/skip table points to a file that does not exist: ${pointer} (F3 STALE_CONTENT).`,
+      message: `Load/skip table points to a file that does not exist: ${ref.token} (F3 STALE_CONTENT).`,
     });
   }
+}
+
+/**
+ * The first candidate of `ref` that exists in the tree, tried as-is and
+ * relative to the CLAUDE.md's workspace root; `undefined` if none resolve.
+ */
+function resolveExisting(
+  ref: LoadSkipReference,
+  root: string,
+  treeSet: Set<string>,
+): string | undefined {
+  for (const candidate of ref.candidates) {
+    if (treeSet.has(candidate)) return candidate;
+    if (root !== '' && treeSet.has(`${root}/${candidate}`)) {
+      return `${root}/${candidate}`;
+    }
+  }
+  return undefined;
 }
 
 function checkLayerBloat(
@@ -283,13 +305,14 @@ function checkLayerBloat(
   // Variant A: the root CLAUDE.md routes tasks at files that live only inside a
   // child workspace; that operations content belongs in the child (§4.5).
   if (claudePath === ROOT_IDENTITY_FILE) {
-    for (const pointer of extractLoadSkipPointers(content)) {
-      if (treeSet.has(pointer) && routingDepth(pointer, tree) >= 2) {
+    for (const ref of extractLoadSkipReferences(content)) {
+      const resolved = resolveExisting(ref, '', treeSet);
+      if (resolved !== undefined && routingDepth(resolved, tree) >= 2) {
         findings.push({
           rule: F.F5,
           severity: WARNING,
           path: claudePath,
-          message: `Root CLAUDE.md routes a task at a child-workspace file (${pointer}): the operations content belongs in the child (F5 LAYER_BLOAT).`,
+          message: `Root CLAUDE.md routes a task at a child-workspace file (${resolved}): the operations content belongs in the child (F5 LAYER_BLOAT).`,
         });
       }
     }

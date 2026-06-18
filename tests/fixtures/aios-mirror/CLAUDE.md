@@ -10,6 +10,8 @@ We are the AIOS operator. Voice: terse, concrete. Conventions: always cite sourc
 | sync     | references/sync.md          | context/  |
 | routing  | references/model-routing.md | clients/  |
 | planning | context/archived-plan.md    | clients/  |
+| catalog  | `references/kit/` (catalog + `_template.md`) | clients/ |
+| handoff  | the target stage's `CONTEXT.md` | clients/ |
 
 ## iMessage operations
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   countIdentityMarkers,
   declaredWorkFolders,
-  extractLoadSkipPointers,
+  extractLoadSkipReferences,
   hasBehaviourBlock,
   hasLoadSkipTable,
   isIdentityHeading,
@@ -32,27 +32,39 @@ describe('hasLoadSkipTable', () => {
   });
 });
 
-describe('extractLoadSkipPointers (scoped to the load/skip table, §4.3)', () => {
-  const md = [
-    '# Root',
-    'See `old.md` in prose (not a router).',
-    '',
-    '## Load/skip table',
-    '| Task | Load | Skip |',
-    '| -- | -- | -- |',
-    '| a | references/voice.md | context/ |',
-    '| b | refs/gone.md | x |',
-  ].join('\n');
+describe('extractLoadSkipReferences (within-cell resolution, §4.3)', () => {
+  const table = (cell: string): string =>
+    `## Load/skip table\n| Task | Load | Skip |\n| -- | -- | -- |\n| t | ${cell} | x |`;
 
-  it('extracts pointers from the table rows', () => {
-    expect(extractLoadSkipPointers(md).sort()).toEqual([
-      'references/voice.md',
-      'refs/gone.md',
+  it('extracts a qualified pointer from the table rows, not from prose', () => {
+    const md = 'See `old.md` in prose.\n\n' + table('references/voice.md');
+    expect(extractLoadSkipReferences(md)).toEqual([
+      {
+        token: 'references/voice.md',
+        structural: false,
+        candidates: ['references/voice.md'],
+      },
     ]);
   });
 
-  it('ignores Markdown paths in prose outside the table', () => {
-    expect(extractLoadSkipPointers(md)).not.toContain('old.md');
+  it('qualifies a bare name with a directory token in the same cell', () => {
+    const refs = extractLoadSkipReferences(
+      table('`references/kit/` (catalog + `_template.md`)'),
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0].token).toBe('_template.md');
+    expect(refs[0].candidates).toContain('references/kit/_template.md');
+  });
+
+  it('marks a bare structural-convention name (CONTEXT.md) as structural', () => {
+    expect(extractLoadSkipReferences(table("the stage's `CONTEXT.md`"))).toEqual([
+      { token: 'CONTEXT.md', structural: true, candidates: ['CONTEXT.md'] },
+    ]);
+  });
+
+  it('does not mark a qualified CONTEXT.md path as structural', () => {
+    const refs = extractLoadSkipReferences(table('01-discovery/CONTEXT.md'));
+    expect(refs[0].structural).toBe(false);
   });
 });
 
