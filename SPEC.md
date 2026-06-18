@@ -1,4 +1,4 @@
-# ICM Spec: v0.3
+# ICM Spec: v0.4
 
 This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the two tools in `icm-kit`: `init`, which generates structures that satisfy the spec, and `audit`, which checks structures against it.
 
@@ -97,7 +97,7 @@ Default classification table (matched in order; first match wins):
 | `references/**/*.md` | reference | on_demand | scope of enclosing workspace |
 | `.claude/skills/<slug>/SKILL.md` | reference | on_demand | scope of enclosing workspace |
 | Numbered stage folder, e.g. `NN-name/CONTEXT.md` | reference (stage contract) | on_demand | L2 |
-| `NN-name/*.md` other than `CONTEXT.md` (a stage working file) | working | per_item | L2 |
+| `NN-name/**/*.md` other than the stage `CONTEXT.md` (a stage working file, anywhere under the stage folder including a subfolder) | working | per_item | L2 |
 | Any `*.md` under a folder mentioned in the enclosing `CLAUDE.md` as a work folder | working | per_item | scope of enclosing workspace |
 | Subdirectory containing its own `CLAUDE.md` | introduces an L1 workspace; classify its contents recursively in that workspace's frame | n/a | L1 (from parent) |
 | Any other `*.md` not matched above | unclassified → reported as Hidden context (§4.2) | n/a | n/a |
@@ -217,7 +217,7 @@ Explicitly deferred to later versions:
 
 ## 6. Versioning
 
-This is **SPEC v0.3**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scopes the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+This is **SPEC v0.4**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence. The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
 
 ---
 

@@ -266,6 +266,7 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
       '.claude/skills/example/SKILL.md',
       '02-build/CONTEXT.md',
       '02-build/spec.md',
+      '02-build/specs/deep.md',
     ];
     expect(findings.some((f) => routed.includes(f.path))).toBe(false);
   });
