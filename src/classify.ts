@@ -133,8 +133,9 @@ export function classify(
     });
   }
 
-  // Row 4b: NN-name/*.md other than CONTEXT.md -> working, per_item, at L2. The
-  // stage's genuine working artifacts, siblings of the stage contract (§2.6).
+  // Row 4b: NN-name/**/*.md other than CONTEXT.md -> working, per_item, at L2.
+  // The stage's genuine working artifacts, anywhere under the stage folder,
+  // including a subfolder such as `specs/` (§2.5, §2.6).
   if (isStageWorkingFile(relPath)) {
     return result({
       path: filePath,
@@ -209,14 +210,19 @@ function isStageContract(relPath: string): boolean {
 }
 
 /**
- * True for a stage working file: any `*.md` in a numbered stage folder other
- * than the stage contract itself (SPEC §2.5, §2.6). A sibling of the contract,
- * routed as the stage's per-item work product.
+ * True for a stage working file: any `*.md` anywhere under a numbered stage
+ * folder other than the stage contract itself (SPEC §2.5, §2.6). A numbered
+ * stage is a work home recursively, so a file in a stage subfolder (e.g.
+ * `03-build/specs/x.md`) routes the same as a direct child. Matches when any
+ * ancestor directory segment is a numbered stage folder, not just the immediate
+ * parent.
  */
 function isStageWorkingFile(relPath: string): boolean {
   if (!isMarkdown(relPath)) return false;
   if (baseName(relPath) === STAGE_CONTRACT_FILE) return false;
-  return STAGE_FOLDER_PATTERN.test(baseName(dirOf(relPath)));
+  const dir = dirOf(relPath);
+  if (dir === '') return false;
+  return dir.split('/').some((segment) => STAGE_FOLDER_PATTERN.test(segment));
 }
 
 /**

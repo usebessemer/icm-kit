@@ -187,22 +187,21 @@ function checkMonolithicSize(
   thresholds: Thresholds,
   findings: Finding[],
 ): void {
+  // The size check applies to UTF-8 text only; a binary or unreadable file is
+  // not token-counted, because a byte count is not a meaningful token estimate
+  // for a binary format (SPEC §4.1).
+  if (!file.isText) return;
   const isClaudeMd = baseName(file.path) === ROOT_IDENTITY_FILE;
   const cap = isClaudeMd
     ? thresholds.claudeMdMaxTokens
     : thresholds.fileMaxTokens;
-  // Unreadable or non-UTF-8 files have empty text; fall back to a byte-based
-  // estimate so a binary monolith can still trip the size guard.
-  const estimated = file.content.length === 0 && file.bytes > 0;
-  const tokens = estimated
-    ? Math.ceil(file.bytes / 4)
-    : countTokens(file.content);
+  const tokens = countTokens(file.content);
   if (tokens > cap) {
     findings.push({
       rule: F.F1,
       severity: WARNING,
       path: file.path,
-      message: `File is ${tokens} tokens${estimated ? ' (estimated from bytes)' : ''}, over the ${cap}-token cap for ${isClaudeMd ? 'a CLAUDE.md' : 'a single file'} (F1 MONOLITHIC_CONTEXT).`,
+      message: `File is ${tokens} tokens, over the ${cap}-token cap for ${isClaudeMd ? 'a CLAUDE.md' : 'a single file'} (F1 MONOLITHIC_CONTEXT).`,
     });
   }
 }

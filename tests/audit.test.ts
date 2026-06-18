@@ -287,6 +287,7 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
       '.claude/skills/example/SKILL.md',
       '02-build/CONTEXT.md',
       '02-build/spec.md',
+      '02-build/specs/deep.md',
     ];
     expect(findings.some((f) => routed.includes(f.path))).toBe(false);
   });
@@ -294,6 +295,14 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
   it('the undotted memory/skills orphans still flag (exact-path precision)', () => {
     expect(at(findings, 'HIDDEN_CONTEXT', 'memory/note-1.md')).toBeDefined();
     expect(at(findings, 'HIDDEN_CONTEXT', 'skills/cleanup.md')).toBeDefined();
+  });
+
+  it('does not size-flag a large binary file (#14)', () => {
+    expect(findings.some((f) => f.path === 'report.pdf')).toBe(false);
+  });
+
+  it('does not audit the skipped archives/ directory (#14)', () => {
+    expect(findings.some((f) => f.path.startsWith('archives/'))).toBe(false);
   });
 
   it('produces exactly the expected findings', () => {
