@@ -97,7 +97,7 @@ Default classification table (matched in order; first match wins):
 | `references/**/*.md` | reference | on_demand | scope of enclosing workspace |
 | `.claude/skills/<slug>/SKILL.md` | reference | on_demand | scope of enclosing workspace |
 | Numbered stage folder, e.g. `NN-name/CONTEXT.md` | reference (stage contract) | on_demand | L2 |
-| `NN-name/*.md` other than `CONTEXT.md` (a stage working file) | working | per_item | L2 |
+| `NN-name/**/*.md` other than the stage `CONTEXT.md` (a stage working file, anywhere under the stage folder including a subfolder) | working | per_item | L2 |
 | Any `*.md` under a folder mentioned in the enclosing `CLAUDE.md` as a work folder | working | per_item | scope of enclosing workspace |
 | Subdirectory containing its own `CLAUDE.md` | introduces an L1 workspace; classify its contents recursively in that workspace's frame | n/a | L1 (from parent) |
 | Any other `*.md` not matched above | unclassified → reported as Hidden context (§4.2) | n/a | n/a |
@@ -217,7 +217,7 @@ Explicitly deferred to later versions:
 
 ## 6. Versioning
 
-This is **SPEC v0.2**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x); v0.2 adds the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table. The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+This is **SPEC v0.2**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x); v0.2 adds the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table. A v0.2.x refinement broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2); the stage-contract row stays immediate-parent and keeps precedence. The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
 
 ---
 

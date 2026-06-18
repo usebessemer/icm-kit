@@ -172,6 +172,7 @@ describe('classify(): harness routing homes (#13, §2.5)', () => {
     '.claude/skills/stray.md',
     '02-build/CONTEXT.md',
     '02-build/spec.md',
+    '02-build/specs/deep.md',
     'memory/note.md',
     'skills/cleanup.md',
   ];
@@ -204,6 +205,17 @@ describe('classify(): harness routing homes (#13, §2.5)', () => {
     expect(c('02-build/spec.md')).toEqual(
       expected({
         path: '02-build/spec.md',
+        routingLevel: 'L2',
+        contentType: 'working',
+        loadPattern: 'per_item',
+      }),
+    );
+  });
+
+  it('routes a nested stage working file (NN-name/**) as working / per_item / L2', () => {
+    expect(c('02-build/specs/deep.md')).toEqual(
+      expected({
+        path: '02-build/specs/deep.md',
         routingLevel: 'L2',
         contentType: 'working',
         loadPattern: 'per_item',
