@@ -164,7 +164,7 @@ A file that exists in the workspace tree but has no routing path. The agent will
 Loaded content that no longer reflects current truth: load/skip tables out of sync with the file tree, references to retired conventions, situational facts marked as active that are no longer accurate.
 
 **Detection (v0.1 partial):**
-- The load/skip table references a file that does not exist. Pointers are read from the load/skip table rows only, not from prose, so template paths (`YYYY-MM-DD.md`) and cross-repo example paths mentioned in prose do not produce spurious findings.
+- The load/skip table references a file that does not exist. Pointers are read from the load/skip table rows only, not from prose, so template paths (`YYYY-MM-DD.md`) and cross-repo example paths mentioned in prose do not produce spurious findings. Within a cell, a pointer is resolved before it is judged missing: a bare filename is also tested against any directory token in the same cell (a `dir/` plus a bare `file.md` resolves to `dir/file.md`), and a bare structural-convention basename (`CONTEXT.md`, `CLAUDE.md`) with no qualifying directory is treated as a per-folder placeholder, not a concrete pointer. A concrete pointer that still resolves to nothing is flagged.
 - Load/skip table omits a file present in a canonical work folder (deferred: needs the load/skip-table format pinned, §5).
 - Time-based heuristics (file age, last-modified vs git activity) are deferred to v0.2.
 
