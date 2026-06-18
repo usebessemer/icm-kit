@@ -27,6 +27,7 @@ export function buildWorkspace(contents: Record<string, string>): Workspace {
       path,
       content: contents[path],
       bytes: Buffer.byteLength(contents[path], 'utf8'),
+      isText: true,
     }));
   const tree = files.map((f) => f.path);
   const claudeMd = new Map<string, string>();

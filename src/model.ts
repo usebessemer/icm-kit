@@ -1,7 +1,7 @@
 /**
  * The ICM rule model.
  *
- * This module is the TypeScript encoding of SPEC.md (SPEC v0.2). It is the
+ * This module is the TypeScript encoding of SPEC.md (SPEC v0.3). It is the
  * single source both `init` and `audit` consume: the classification axes
  * (SPEC §2.2 to §2.4), the classification result shape (§2.5), the
  * well-formedness rules (§3), and the failure modes (§4).
