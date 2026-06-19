@@ -1,9 +1,9 @@
 # icm-kit
 
-Tooling for the Interpretable Context Methodology (ICM), an architecture for organizing the folders and files an agent reads. icm-kit will provide two commands sharing a single rule model:
+Tooling for the Interpretable Context Methodology (ICM), an architecture for organizing the folders and files an agent reads. icm-kit provides two commands sharing a single rule model:
 
-- **`init`**: scaffold a new ICM-compliant workspace.
-- **`audit`**: check an existing workspace against the rule model and report violations of the ICM failure modes.
+- **`audit`** (implemented): check an existing workspace against the rule model and report violations of the ICM failure modes.
+- **`init`** (next): scaffold a new ICM-compliant workspace.
 
 ## Background
 
@@ -11,17 +11,17 @@ ICM is described in [*Context as Architecture*](https://github.com/usebessemer/r
 
 icm-kit is the applied counterpart: a tool that operationalizes the paper's classification and failure modes.
 
-## Status: v0.1
+## Status: v0.5
 
-This repo contains the **specification only**. No commands are implemented yet. The spec is the shared contract that `init` and `audit` will both consume.
+`audit` is implemented and hardened: the §2.5 file classifier and the W1-W7 / F1-F6 rule set, run end-to-end and validated against a real production workspace (the dry run against it drove the v0.2 to v0.5 hardening). `init` is next. Typing agent *roles*, not just files (per the [agent-role topology](https://github.com/usebessemer/research/blob/main/theory/agent-role-topology.md)), is a forthcoming SPEC extension.
 
-- [`SPEC.md`](SPEC.md): the formal model, well-formedness rules, failure modes, and stage-contract requirements.
+- [`SPEC.md`](SPEC.md): the formal model (v0.5), well-formedness rules, failure modes, and stage-contract requirements.
 
 ## Roadmap
 
-- **v0.1**: spec only (this release).
-- **v0.x**: rule model implementation, then `init`, then `audit`.
-- **1.0**: both commands shipping end-to-end against the spec, audited against a real production workspace.
+- **v0.1 to v0.5** (shipped): the rule model, the §2.5 classifier, and `audit`, hardened against a real production workspace.
+- **next**: `init` (scaffold a compliant workspace), then the role-layer SPEC extension.
+- **1.0**: both `init` and `audit` shipping end-to-end against the spec, with a clean generated workspace auditing green.
 
 ## Development
 
