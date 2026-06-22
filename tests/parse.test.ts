@@ -208,6 +208,72 @@ describe('proseBlocks (F8 segmentation, §4.8)', () => {
       ['gamma'],
     ]);
   });
+
+  it('does not read a # inside a fence as a heading, and drops the fenced code', () => {
+    const md = [
+      '# Real Heading',
+      'Actual prose one here.',
+      '',
+      '```sh',
+      '# this shell comment is not a heading',
+      'echo leaked fenced code that must never reach prose',
+      '```',
+      'Actual prose two here.',
+    ].join('\n');
+    const blocks = proseBlocks(md);
+    // One block (the fence did not split the section), and no fenced tokens.
+    expect(blocks).toEqual([
+      ['actual', 'prose', 'one', 'here', 'actual', 'prose', 'two', 'here'],
+    ]);
+    expect(blocks.flat()).not.toContain('echo');
+    expect(blocks.flat()).not.toContain('leaked');
+    expect(blocks.flat()).not.toContain('comment');
+  });
+
+  it('strips an unclosed fence to end of document', () => {
+    const md = ['# H', 'kept prose line', '```', '# not a heading', 'dangling code'].join(
+      '\n',
+    );
+    expect(proseBlocks(md)).toEqual([['kept', 'prose', 'line']]);
+  });
+
+  it('keeps a mismatched inner fence (~~~ inside a ``` block) as code', () => {
+    const md = [
+      '# H',
+      'real prose alpha here.',
+      '```bash',
+      '# shell comment not a heading',
+      'echo one',
+      '~~~',
+      '# still inside the code fence',
+      'echo two',
+      '```',
+      'real prose beta here.',
+    ].join('\n');
+    const blocks = proseBlocks(md);
+    expect(blocks).toEqual([
+      ['real', 'prose', 'alpha', 'here', 'real', 'prose', 'beta', 'here'],
+    ]);
+    expect(blocks.flat()).not.toContain('echo');
+    expect(blocks.flat()).not.toContain('still');
+  });
+
+  it('keeps a shorter inner fence (``` inside a ```` block) as code', () => {
+    const md = [
+      '# H',
+      'intro prose word.',
+      '````md',
+      '```js',
+      'leaked = secret(value)',
+      '```',
+      '````',
+      'outro prose word.',
+    ].join('\n');
+    const blocks = proseBlocks(md);
+    expect(blocks).toEqual([['intro', 'prose', 'word', 'outro', 'prose', 'word']]);
+    expect(blocks.flat()).not.toContain('leaked');
+    expect(blocks.flat()).not.toContain('secret');
+  });
 });
 
 describe('findDuplicateProse (F8 comparator, §4.8)', () => {
@@ -282,5 +348,30 @@ describe('findDuplicateProse (F8 comparator, §4.8)', () => {
     expect(pairs).toEqual([
       { left: 'context/x.md', right: 'references/y.md' },
     ]);
+  });
+
+  it('compares a sub-shingle-width block as a single whole-block shingle', () => {
+    // A block with fewer words than the shingle width still shingles (as one
+    // whole-block token), so identical short-but-over-floor blocks match and
+    // distinct ones do not. Floor lowered so the 3-word blocks qualify.
+    const lowFloor = { ...opts, minBlockTokens: 1 };
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: '# A\nthree word block' },
+          { path: 'b.md', content: '# B\nthree word block' },
+        ],
+        lowFloor,
+      ),
+    ).toEqual([{ left: 'a.md', right: 'b.md' }]);
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: '# A\nthree word block' },
+          { path: 'b.md', content: '# B\nfour different short words' },
+        ],
+        lowFloor,
+      ),
+    ).toEqual([]);
   });
 });

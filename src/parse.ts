@@ -342,21 +342,73 @@ function isLinkOrPathOnly(line: string): boolean {
 }
 
 /**
- * The normalized words of one section body, for shingling (F8). Fenced code,
- * table rows, blank lines, and link-/path-only lines are dropped; the rest is
- * lowercased and reduced to word tokens (Markdown punctuation falls away), so
- * comparison is over substance, not formatting.
+ * A Markdown code-fence marker: the fence character (backtick or tilde) and its
+ * run length, plus whether the line could *close* a fence (a closer carries no
+ * info string, only trailing whitespace). `null` for a non-fence line. Up to
+ * three leading spaces of indentation are allowed (CommonMark).
+ */
+function fenceMarker(
+  line: string,
+): { char: string; length: number; closeable: boolean } | null {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+  if (!match) return null;
+  return {
+    char: match[1][0],
+    length: match[1].length,
+    closeable: match[2].trim() === '',
+  };
+}
+
+/**
+ * Remove fenced code blocks (``` / ~~~) from Markdown at the document level,
+ * before any heading split, honouring CommonMark fence rules: a block opened by
+ * a run of backticks or tildes closes only on a line of the *same* character
+ * with a run *at least as long* and no info string. That is what keeps a
+ * `#`-prefixed line inside a fence (a shell comment, a documented heading
+ * example) from being read as a real heading, and keeps a mismatched or shorter
+ * inner fence (a `~~~` inside a ```-block, or a ``` inside a ````-block, the
+ * usual way docs show a fence verbatim) as code rather than a spurious closer.
+ * Stripping fences first means `splitSections` never splits on one, so fenced
+ * code can never desync section boundaries or leak into the comparison (F8). An
+ * unclosed fence strips to end of document: its content is code, not prose.
+ */
+function stripFencedCode(content: string): string {
+  const out: string[] = [];
+  let open: { char: string; length: number } | null = null;
+  for (const line of content.split('\n')) {
+    const fence = fenceMarker(line);
+    if (open === null) {
+      if (fence) {
+        open = { char: fence.char, length: fence.length };
+        continue; // drop the opening fence line
+      }
+      out.push(line);
+    } else if (
+      fence &&
+      fence.char === open.char &&
+      fence.length >= open.length &&
+      fence.closeable
+    ) {
+      open = null;
+      continue; // drop the closing fence line
+    }
+    // Any other line while a fence is open (including a non-matching inner
+    // fence) is code, and is dropped by falling through without a push.
+  }
+  return out.join('\n');
+}
+
+/**
+ * The normalized words of one section body, for shingling (F8). Table rows,
+ * blank lines, and link-/path-only lines are dropped; the rest is lowercased and
+ * reduced to word tokens (Markdown punctuation falls away), so comparison is
+ * over substance, not formatting. Fenced code is already gone (stripped at the
+ * document level by `proseBlocks` before the heading split).
  */
 function blockWords(body: string): string[] {
   const kept: string[] = [];
-  let inFence = false;
   for (const raw of body.split('\n')) {
     const line = raw.trim();
-    if (/^(```|~~~)/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
     if (line === '') continue;
     if (isTableRow(raw)) continue;
     if (isLinkOrPathOnly(line)) continue;
@@ -368,13 +420,14 @@ function blockWords(body: string): string[] {
 /**
  * Segment Markdown into normalized prose blocks for the DUPLICATION check
  * (F8, SPEC §4.8): one word list per heading section (the preamble included),
- * with code fences, tables, and link-/path-only lines removed. Empty blocks are
+ * with fenced code stripped up front (so a `#` inside a fence is never read as a
+ * heading), then tables and link-/path-only lines removed. Empty blocks are
  * dropped. Headings themselves are delimiters, never block content, so shared
  * short headings and stage-contract section labels never count as duplication.
  */
 export function proseBlocks(content: string): string[][] {
   const blocks: string[][] = [];
-  for (const section of splitSections(content)) {
+  for (const section of splitSections(stripFencedCode(content))) {
     const words = blockWords(section.body);
     if (words.length > 0) blocks.push(words);
   }
@@ -427,7 +480,15 @@ export interface DuplicatePair {
   readonly right: string;
 }
 
-/** The qualifying shingle sets of one file: blocks at or over the token floor. */
+/**
+ * The qualifying shingle sets of one file: blocks at or over the token floor.
+ *
+ * The floor measures the block's raw token count, while Jaccard runs over the
+ * shingle *set*, so a heavily-repeated short line clears the floor on a small
+ * set of unique shingles (SPEC §4.8). That is intentional for v0.6: repeated
+ * boilerplate copied across routed homes is itself duplication worth flagging.
+ * A unique-shingle minimum to discount pure repetition is deferred to calibration.
+ */
 function qualifyingShingleSets(
   content: string,
   opts: DuplicationOptions,

@@ -32,6 +32,7 @@ describe('icm-kit audit (CLI)', () => {
     expect(status).toBe(1);
     expect(stdout).toContain('LAYER_BLOAT');
     expect(stdout).toContain('HIDDEN_CONTEXT (enforces ROUTABLE_FILES)');
-    expect(stdout).toContain('12 finding(s).');
+    expect(stdout).toContain('DUPLICATION');
+    expect(stdout).toContain('14 finding(s).');
   }, 20000);
 });

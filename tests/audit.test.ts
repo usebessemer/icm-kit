@@ -337,6 +337,125 @@ describe('audit(): F8 DUPLICATION (whole-workspace, §4.8)', () => {
       expect.stringContaining('references/b.md'),
     ]);
   });
+
+  it('does not flag two files that share only fenced code (blocker regression)', () => {
+    // Identical fenced block (with a # comment inside) but distinct prose. With
+    // fence-aware segmentation the code is stripped, so nothing substantive
+    // matches; without it, the leaked code would be a false-positive duplicate.
+    const fence = [
+      '```sh',
+      '# deploy script comment that is not a markdown heading at all',
+      'set -euo pipefail',
+      'for region in us eu ap sa af me oc la na il; do',
+      '  echo "deploying the api service to the ${region} cluster and then waiting"',
+      '  kubectl apply -f manifests/ && kubectl rollout status deploy/api --timeout 90',
+      '  sleep 5 && curl --silent --fail https://health.internal/${region}/ready',
+      'done',
+      '```',
+    ].join('\n');
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/a.md': `# A\n\n${voicePara}\n\n${fence}`,
+        'references/b.md': `# B\n\n${longParaB}\n\n${fence}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('does not flag two work-product deliverables that share a block (pair guard)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity\n\nClient work lives under `engagements/`.',
+        'engagements/javed/report.md': `# Javed\n\n${longParaA}`,
+        'engagements/maria/report.md': `# Maria\n\n${longParaA}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('still flags a work product duplicating durable reference content', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity\n\nClient work lives under `engagements/`.',
+        'engagements/javed/report.md': `# Javed\n\n${longParaA}`,
+        'references/playbook.md': `# Playbook\n\n${longParaA}`,
+      }),
+    );
+    expect(paths(findings, 'DUPLICATION')).toEqual([
+      'engagements/javed/report.md',
+      'references/playbook.md',
+    ]);
+  });
+
+  it('does not flag two docs whose only shared block is a displayed (nested-fence) code example', () => {
+    // Minimal distinct prose (below the token floor) plus a large shared code
+    // block shown verbatim in a 4-backtick fence wrapping a 3-backtick one.
+    // Without run-length-aware stripping the leaked code dominates and is
+    // identical, firing a false positive (Jaccard ~0.9); with the fix it is
+    // stripped and the short intros fall under the floor, so nothing qualifies.
+    const displayed = [
+      '````md',
+      '```js',
+      '// deployment example shown verbatim in the documentation for every region',
+      'const deploy = (region) => kubectl.apply(manifests).then(() => rollout(region, timeout));',
+      'for (const region of ["us", "eu", "ap", "sa", "af", "me", "oc", "la", "na", "il"]) {',
+      '  await deploy(region); await healthcheck(region); await notify(channel, region);',
+      '}',
+      '```',
+      '````',
+    ].join('\n');
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/a.md': `# A\n\nIntro alpha.\n\n${displayed}`,
+        'references/b.md': `# B\n\nIntro beta.\n\n${displayed}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('does not flag a nested-workspace .memory/ copy (depth-robust guard)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': `# Root identity\n\n## Voice\n\n${voicePara}`,
+        'subws/CLAUDE.md': '# Sub identity',
+        'subws/.memory/note.md': `# Note\n\n${voicePara}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('does not flag a nested-workspace .claude/skills copy (depth-robust guard)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': `# Root identity\n\n## Voice\n\n${voicePara}`,
+        'subws/CLAUDE.md': '# Sub identity',
+        'subws/.claude/skills/demo/SKILL.md': `# Demo\n\n${voicePara}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('does not flag an archives/ copy (retired-content guard)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': `# Root identity\n\nSee \`archives/old.md\`.\n\n## Voice\n\n${voicePara}`,
+        'archives/old.md': `# Old\n\n${voicePara}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('does not flag an L2 numbered-stage work file (stage-scratch guard)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': `# Root identity\n\n## Voice\n\n${voicePara}`,
+        '01-stage/work.md': `# Work\n\n${voicePara}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
 });
 
 describe('audit(): work-folder declaration', () => {
@@ -428,7 +547,17 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
     expect(findings.some((f) => f.path.startsWith('archives/'))).toBe(false);
   });
 
+  it('F8: the shared repeated-line block in sync.md / acme brief, both sides', () => {
+    expect(paths(findings, 'DUPLICATION')).toEqual([
+      'clients/acme/brief.md',
+      'references/sync.md',
+    ]);
+    expect(at(findings, 'DUPLICATION', 'clients/acme/brief.md')?.message).toContain(
+      'references/sync.md',
+    );
+  });
+
   it('produces exactly the expected findings', () => {
-    expect(findings).toHaveLength(12);
+    expect(findings).toHaveLength(14);
   });
 });

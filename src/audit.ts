@@ -30,7 +30,9 @@
  *   (SPEC §4.8). The candidate set excludes unclassified files (F2's concern),
  *   the always-loaded `.memory/` store, auto-discovered skills, numbered-stage
  *   work files, and retired `archives/` content, where shared or templated
- *   prose is expected rather than drift.
+ *   prose is expected rather than drift. Beyond the candidate set, two work
+ *   products are not flagged against each other (templated deliverables share
+ *   structure by design), but a work product duplicating durable content is.
  */
 
 import { classify } from './classify.js';
@@ -382,9 +384,24 @@ function checkDuplication(
     countTokens,
   });
   for (const { left, right } of pairs) {
+    // Two work products are not flagged against each other: templated
+    // deliverables across engagements share structure by design (§4.8). A work
+    // product duplicating durable content (identity/situational/reference) is
+    // still flagged, since that is the cross-home drift F8 targets.
+    if (
+      isWorkProduct(classifications.get(left)!) &&
+      isWorkProduct(classifications.get(right)!)
+    ) {
+      continue;
+    }
     findings.push(duplicationFinding(left, right));
     findings.push(duplicationFinding(right, left));
   }
+}
+
+/** True for a per-item work product (a `working` file, at any routing level). */
+function isWorkProduct(c: Classification): boolean {
+  return c.contentType === 'working';
 }
 
 /** One side of a duplicated pair: `path`, naming the `other` it duplicates. */
@@ -399,21 +416,41 @@ function duplicationFinding(path: string, other: string): Finding {
 
 /**
  * True when a file belongs in the DUPLICATION candidate set (SPEC §4.8 guards).
- * Excludes unclassified files (F2's concern, not duplication), the always-loaded
- * `.memory/` store and auto-discovered skills (shared or templated prose there
- * is expected), numbered-stage work files (per-item artifacts), and retired
- * `archives/` content (a live file vs its own archived copy is the correct route,
- * not drift; `archives/` is also stripped by the workspace walker's ignore list,
- * so this guard covers only in-memory trees).
+ * Excludes unclassified files (F2's concern, not duplication); the always-loaded
+ * `.memory/` store and auto-discovered skills, matched at any depth so a nested
+ * workspace's harness homes are covered too (shared or templated prose there is
+ * expected); numbered-stage work files (transient per-task scratch, a structural
+ * harness home); and retired `archives/` content (a live file vs its own archived
+ * copy is the correct route, not drift; `archives/` is also stripped by the
+ * workspace walker's ignore list, so this guard covers only in-memory trees).
+ *
+ * Declared-work-folder deliverables (e.g. `clients/`, `engagements/`) stay in the
+ * candidate set; the both-work-products pair guard in `checkDuplication` keeps two
+ * deliverables from flagging each other while still catching a deliverable that
+ * duplicates durable content.
  */
 function isDuplicationCandidate(file: WorkspaceFile, c: Classification): boolean {
   if (!file.isText || c.unclassified) return false;
-  const segments = file.path.split('/');
-  if (segments[0] === CANONICAL_HOMES.memory) return false;
-  if (file.path.startsWith(`${CANONICAL_HOMES.skill}/`)) return false;
-  if (segments.includes('archives')) return false;
+  if (pathUnderHome(file.path, CANONICAL_HOMES.memory)) return false;
+  if (pathUnderHome(file.path, CANONICAL_HOMES.skill)) return false;
+  if (pathUnderHome(file.path, 'archives')) return false;
   if (c.contentType === 'working' && c.routingLevel === 'L2') return false;
   return true;
+}
+
+/**
+ * True when `home` (a `/`-joined folder name like `.memory` or `.claude/skills`)
+ * appears as a run of consecutive path segments in `path`, at any depth. Segment
+ * matching, not substring, so `team.claude/skills/x` does not match `.claude/skills`
+ * and `archives-2024/x` does not match `archives`.
+ */
+function pathUnderHome(path: string, home: string): boolean {
+  const segments = path.split('/');
+  const homeSegments = home.split('/');
+  for (let i = 0; i + homeSegments.length <= segments.length; i += 1) {
+    if (homeSegments.every((seg, k) => segments[i + k] === seg)) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
