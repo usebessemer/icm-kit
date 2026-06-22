@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { audit } from '../src/audit.js';
 import { readWorkspace } from '../src/workspace.js';
+import { DEFAULT_THRESHOLDS } from '../src/model.js';
 import type { Finding } from '../src/model.js';
 import { buildWorkspace } from './helpers/fixtures.js';
 
@@ -213,6 +214,128 @@ describe('audit(): F5 LAYER_BLOAT (size + heading, not marker density)', () => {
       }),
     );
     expect(at(findings, 'LAYER_BLOAT', 'CLAUDE.md')).toBeDefined();
+  });
+});
+
+describe('audit(): F8 DUPLICATION (whole-workspace, §4.8)', () => {
+  // A ~50-word voice paragraph, comfortably over the 40-token block floor.
+  const voicePara =
+    'We write in a warm but concise register, favouring short declarative sentences ' +
+    'over hedged qualifications, and we name a concrete source for every factual claim ' +
+    'rather than gesturing vaguely at the wider literature, because a reader benefits ' +
+    'from being able to verify each statement without having to guess where it came from.';
+
+  // Two distinct ~55-word blocks, each over the floor, sharing no 5-word shingle.
+  const longParaA =
+    'the operator reviews every incoming digest each morning and then files the relevant ' +
+    'items carefully under the correct client label long before the daily standup begins ' +
+    'so that nothing important ever slips through the cracks and the weekly status report ' +
+    'stays accurate complete current and genuinely useful to the whole distributed delivery ' +
+    'team across every region';
+  const longParaB =
+    'annual budget forecasts for the upcoming fiscal year depend heavily on procurement ' +
+    'timelines vendor negotiations contract renewals and seasonal customer demand which the ' +
+    'finance group models separately using historical baselines while the marketing ' +
+    'organisation independently prepares its own campaigns targeting newer audiences within ' +
+    'several emerging coastal markets through partnerships sponsorships and paid experiments';
+
+  it('fires on both sides of two routed files sharing a block, naming the other', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': `# Root identity\n\n## Voice\n\n${voicePara}`,
+        'references/voice.md': `# Voice\n\n${voicePara}`,
+      }),
+    );
+    const onClaude = at(findings, 'DUPLICATION', 'CLAUDE.md');
+    const onVoice = at(findings, 'DUPLICATION', 'references/voice.md');
+    expect(onClaude?.message).toContain('references/voice.md');
+    expect(onClaude?.message).toMatch(/\(F8 DUPLICATION\)\.$/);
+    expect(onVoice?.message).toContain('CLAUDE.md');
+  });
+
+  it('fires on a near-duplicate (a few words changed, still over the floor)', () => {
+    const scopeBase =
+      'Scope on this engagement is fixed at the start and never renegotiated midstream ' +
+      'without a formal written change request signed by both the client and the delivery lead. ' +
+      'Every deliverable listed in the statement of work has an explicit acceptance test, and ' +
+      'anything that falls outside that list is logged as a future opportunity rather than ' +
+      'absorbed silently into the current sprint. The team protects its focus by routing all ' +
+      'new ideas through the backlog, where they are prioritised against the agreed goals at ' +
+      'the next planning review instead of derailing the present commitment to the customer.';
+    const scopeVariant = scopeBase.replace('the delivery lead', 'our principal sponsor');
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/scope-discipline.md': `# Scope discipline\n\n${scopeBase}`,
+        'references/engagement-scope.md': `# Engagement scope\n\n${scopeVariant}`,
+      }),
+    );
+    expect(paths(findings, 'DUPLICATION')).toEqual([
+      'references/engagement-scope.md',
+      'references/scope-discipline.md',
+    ]);
+  });
+
+  it('is silent on a shared heading, link line, and below-floor paraphrase', () => {
+    // Both blocks clear the token floor, so the silence is the Jaccard floor at
+    // work (distinct prose), not a too-short block being skipped.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/a.md': `## Notes\n\n[ref](http://example.com)\n\n${longParaA}`,
+        'references/b.md': `## Notes\n\n[ref](http://example.com)\n\n${longParaB}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('is silent when one side is an excluded home (.memory/ identical copy)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': `# Root identity\n\n## Voice\n\n${voicePara}`,
+        '.memory/user-x.md': `# Notes\n\n${voicePara}`,
+      }),
+    );
+    expect(rule(findings, 'DUPLICATION')).toHaveLength(0);
+  });
+
+  it('wires the similarity floor: a below-floor pair fires once it is lowered', () => {
+    const sharedPrefix =
+      'the operator reviews every incoming digest each morning and files the relevant ' +
+      'items under the correct client label before the standup so that nothing slips';
+    const ws = buildWorkspace({
+      'CLAUDE.md': '# Root identity',
+      'references/a.md':
+        `# A\n\n${sharedPrefix} through the cracks and the weekly report stays accurate ` +
+        'complete and genuinely useful to the whole distributed team this quarter',
+      'references/b.md':
+        `# B\n\n${sharedPrefix} downstream when budget forecasts vendor negotiations and ` +
+        'seasonal procurement timelines drift past their original published baselines',
+    });
+    expect(rule(audit(ws), 'DUPLICATION')).toHaveLength(0);
+    const lowered = audit(ws, {
+      thresholds: { ...DEFAULT_THRESHOLDS, duplicationSimilarityFloor: 0.1 },
+    });
+    expect(rule(lowered, 'DUPLICATION').length).toBeGreaterThan(0);
+  });
+
+  it('keeps two findings at one path deterministic (the determinism mustFix)', () => {
+    // references/c.md duplicates a different block of each of a.md and b.md, so
+    // it carries two F8 findings at one path/rule: they must order by message.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/a.md': `# A\n\n${longParaA}`,
+        'references/b.md': `# B\n\n${longParaB}`,
+        'references/c.md': `# C\n\n## one\n\n${longParaA}\n\n## two\n\n${longParaB}`,
+      }),
+    );
+    const onC = rule(findings, 'DUPLICATION').filter((f) => f.path === 'references/c.md');
+    expect(onC).toHaveLength(2);
+    expect(onC.map((f) => f.message)).toEqual([
+      expect.stringContaining('references/a.md'),
+      expect.stringContaining('references/b.md'),
+    ]);
   });
 });
 

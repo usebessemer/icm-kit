@@ -1,4 +1,4 @@
-# ICM Spec: v0.5
+# ICM Spec: v0.6
 
 This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the two tools in `icm-kit`: `init`, which generates structures that satisfy the spec, and `audit`, which checks structures against it.
 
@@ -139,7 +139,7 @@ A workspace is **ICM-compliant** if and only if all the following hold. Each rul
 
 ## 4. Failure modes
 
-Each failure mode is a lint rule, carrying a stable code (`F1` through `F6`, in section order 4.1 through 4.6) that the rule model and audit output use as its identifier. The first five (`F1` to `F5`) are derived directly from the paper's Failure Modes section. The sixth (`F6`, `MALFORMED_STAGE_CONTRACT`) is original to icm-kit and has no counterpart in the paper; it enforces the stage-contract shape required by W7 (§3). Severity in v0.1 is `warning` for all rules; an `error` severity is reserved for later.
+Each failure mode is a lint rule, carrying a stable code (`F1` through `F6` plus `F8`, in section order 4.1 through 4.6 and 4.8) that the rule model and audit output use as its identifier. The first five (`F1` to `F5`) are derived directly from the paper's Failure Modes section. The sixth (`F6`, `MALFORMED_STAGE_CONTRACT`) and `F8` (`DUPLICATION`, §4.8) are original to icm-kit and have no counterpart in the paper; `F6` enforces the stage-contract shape required by W7 (§3). `F7` (`KIT_BOILERPLATE`) is reserved and in flight: its §4.7 entry lands with the git-history rule, so until then the failure-mode codes are non-contiguous and §4 shows 4.8 before a 4.7 exists. Severity in v0.1 is `warning` for all rules; an `error` severity is reserved for later.
 
 ### 4.1 `MONOLITHIC_CONTEXT`
 
@@ -199,6 +199,14 @@ A stage contract `CONTEXT.md` missing one or more of the required IPO + C sectio
 
 **Severity:** warning.
 
+### 4.8 `DUPLICATION`
+
+The same substantive prose lives in two separately-routed homes (e.g. root identity restating a `context/` or `references/` file; a scope-discipline file restating an engagement-scope file).
+
+**Detection (v0.6):** for each pair of distinct classified text files, both routed (not `unclassified`), segment each file's prose into blocks (markdown sections, excluding code fences, tables, and path/link-only lines), normalize, and compare blocks pairwise by Jaccard similarity over 5-word shingles. Flag a pair when a block pair scores >= `duplicationSimilarityFloor` (0.80) and the block is >= `duplicationMinBlockTokens` (40) tokens. Always-loaded and canonical-home files (`.memory/`, generated scaffolding, `init` boilerplate) and retired content (`archives/`) are excluded; shared short headings, link-only lines, and stage-contract section labels do not count. Each duplicated pair emits one finding per side, naming the other path. Original to icm-kit; no counterpart in the paper.
+
+**Severity:** warning.
+
 ---
 
 ## 5. Out of scope for v0.1
@@ -217,7 +225,7 @@ Explicitly deferred to later versions:
 
 ## 6. Versioning
 
-This is **SPEC v0.5**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence; v0.5 resolves F3 pointers within the load/skip cell, so a bare name qualifies against a same-cell directory token and a bare structural basename (`CONTEXT.md`, `CLAUDE.md`) is a placeholder, not a dangling pointer (§4.3). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+This is **SPEC v0.6**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence; v0.5 resolves F3 pointers within the load/skip cell, so a bare name qualifies against a same-cell directory token and a bare structural basename (`CONTEXT.md`, `CLAUDE.md`) is a placeholder, not a dangling pointer (§4.3); v0.6 adds the `DUPLICATION` failure mode (`F8`, §4.8), a whole-workspace check that flags the same substantive prose living in two separately-routed homes (`F7` `KIT_BOILERPLATE` is reserved and in flight, so the failure-mode codes are non-contiguous until it lands). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
 
 ---
 

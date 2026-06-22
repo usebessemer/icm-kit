@@ -3,11 +3,13 @@ import {
   countIdentityMarkers,
   declaredWorkFolders,
   extractLoadSkipReferences,
+  findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
   isIdentityHeading,
   namedByClaudeMd,
   parseStageContract,
+  proseBlocks,
   splitSections,
 } from '../src/parse.js';
 import { STAGE_CONTRACT_SECTIONS } from '../src/model.js';
@@ -177,5 +179,108 @@ describe('parseStageContract', () => {
       missing: ['Completion'],
       empty: ['Process'],
     });
+  });
+});
+
+describe('proseBlocks (F8 segmentation, §4.8)', () => {
+  it('normalizes prose and drops code fences, tables, and link-/path-only lines', () => {
+    const md = [
+      '# Heading',
+      'First sentence of PROSE here.',
+      '',
+      '```',
+      'const code = 1;',
+      '```',
+      '| a | b |',
+      '| - | - |',
+      '[link](http://example.com)',
+      'references/voice.md',
+      'Second real sentence.',
+    ].join('\n');
+    expect(proseBlocks(md)).toEqual([
+      ['first', 'sentence', 'of', 'prose', 'here', 'second', 'real', 'sentence'],
+    ]);
+  });
+
+  it('produces one block per heading section and drops empty sections', () => {
+    expect(proseBlocks('# A\nalpha beta\n# B\n\n# C\ngamma')).toEqual([
+      ['alpha', 'beta'],
+      ['gamma'],
+    ]);
+  });
+});
+
+describe('findDuplicateProse (F8 comparator, §4.8)', () => {
+  const wordCount = (t: string): number =>
+    t.trim() ? t.trim().split(/\s+/).length : 0;
+  const opts = {
+    shingleSize: 5,
+    similarityFloor: 0.8,
+    minBlockTokens: 40,
+    countTokens: wordCount,
+  };
+
+  // A 45-word block, comfortably over the 40-token floor.
+  const para =
+    'the operator reviews every incoming digest each morning and files the relevant ' +
+    'items under the correct client label before the standup so that nothing slips ' +
+    'through the cracks and the weekly report stays accurate complete and genuinely ' +
+    'useful to the whole distributed team across regions';
+
+  // A distinct 45-word block sharing no 5-word shingle with `para`.
+  const otherPara =
+    'budget forecasts for the upcoming fiscal year depend heavily on procurement ' +
+    'timelines vendor negotiations and seasonal demand which finance models separately ' +
+    'using historical baselines while marketing prepares independent campaigns targeting ' +
+    'newer audiences in emerging coastal markets through partnerships and paid experiments';
+
+  it('pairs two files sharing an identical block over the token floor', () => {
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: `# A\n${para}` },
+          { path: 'b.md', content: `# B\n${para}` },
+        ],
+        opts,
+      ),
+    ).toEqual([{ left: 'a.md', right: 'b.md' }]);
+  });
+
+  it('does not pair when the shared block is below the token floor', () => {
+    const short = 'a tiny shared line of prose';
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: `# A\n${short}` },
+          { path: 'b.md', content: `# B\n${short}` },
+        ],
+        opts,
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not pair genuinely different prose blocks', () => {
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: `# A\n${para}` },
+          { path: 'b.md', content: `# B\n${otherPara}` },
+        ],
+        opts,
+      ),
+    ).toEqual([]);
+  });
+
+  it('orders each returned pair by input order (deterministic)', () => {
+    const pairs = findDuplicateProse(
+      [
+        { path: 'context/x.md', content: `# X\n${para}` },
+        { path: 'references/y.md', content: `# Y\n${para}` },
+      ],
+      opts,
+    );
+    expect(pairs).toEqual([
+      { left: 'context/x.md', right: 'references/y.md' },
+    ]);
   });
 });

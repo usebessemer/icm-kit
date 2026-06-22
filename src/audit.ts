@@ -2,10 +2,10 @@
  * The audit runner (SPEC §3, §4).
  *
  * `audit` walks a read workspace, classifies every file (§2.5), and evaluates
- * the well-formedness rules (W1 to W7) and failure modes (F1 to F6) from the
- * rule model, returning a sorted list of findings. Every finding carries a
- * stable rule code; failure modes that enforce a well-formedness rule also
- * carry the `relatedRule` they back (e.g. HIDDEN_CONTEXT enforces W5).
+ * the well-formedness rules (W1 to W7) and failure modes (F1 to F6, plus F8)
+ * from the rule model, returning a sorted list of findings. Every finding
+ * carries a stable rule code; failure modes that enforce a well-formedness rule
+ * also carry the `relatedRule` they back (e.g. HIDDEN_CONTEXT enforces W5).
  *
  * v0.1 scope notes (each surfaced in the PR, none silently absorbed):
  * - W4 NESTED_INTEGRITY is implemented by running W1 to W3 across every
@@ -25,10 +25,17 @@
  *   heuristics are deferred.
  * - F1 size caps stay at the spec defaults: a crude "egregiously huge" guard,
  *   not tuned to reproduce any hand-audit (SPEC §5 q3).
+ * - F8 DUPLICATION is whole-workspace, not per-file: it compares the prose
+ *   blocks of every pair of classified text files by Jaccard over word shingles
+ *   (SPEC §4.8). The candidate set excludes unclassified files (F2's concern),
+ *   the always-loaded `.memory/` store, auto-discovered skills, numbered-stage
+ *   work files, and retired `archives/` content, where shared or templated
+ *   prose is expected rather than drift.
  */
 
 import { classify } from './classify.js';
 import {
+  CANONICAL_HOMES,
   DEFAULT_THRESHOLDS,
   FAILURE_MODES,
   ROOT_IDENTITY_FILE,
@@ -39,13 +46,14 @@ import type { Classification, Finding, Severity, Thresholds } from './model.js';
 import { baseName, dirOf, isMarkdown, routingDepth } from './paths.js';
 import {
   extractLoadSkipReferences,
+  findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
   isIdentityHeading,
   parseStageContract,
   splitSections,
 } from './parse.js';
-import type { LoadSkipReference } from './parse.js';
+import type { DuplicationInput, LoadSkipReference } from './parse.js';
 import { DEFAULT_TOKEN_COUNTER } from './tokens.js';
 import type { TokenCounter } from './tokens.js';
 import type { Workspace, WorkspaceFile } from './workspace.js';
@@ -63,7 +71,7 @@ export interface AuditOptions {
   readonly countTokens?: TokenCounter;
 }
 
-/** Audit a read workspace against W1 to W7 and F1 to F6 (SPEC §3, §4). */
+/** Audit a read workspace against W1 to W7 and F1 to F6, plus F8 (SPEC §3, §4). */
 export function audit(workspace: Workspace, options: AuditOptions = {}): Finding[] {
   const thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
   const countTokens = options.countTokens ?? DEFAULT_TOKEN_COUNTER;
@@ -93,6 +101,9 @@ export function audit(workspace: Workspace, options: AuditOptions = {}): Finding
     checkStaleContent(claudePath, content, treeSet, findings);
     checkLayerBloat(claudePath, content, tree, treeSet, countTokens, thresholds, findings);
   }
+
+  // Whole-workspace pass (after the per-file loop), like the identity checks.
+  checkDuplication(files, classifications, countTokens, thresholds, findings);
 
   return sortFindings(findings);
 }
@@ -341,13 +352,84 @@ function checkLayerBloat(
 }
 
 // ---------------------------------------------------------------------------
+// Duplication (F8)
+// ---------------------------------------------------------------------------
+
+/**
+ * F8 DUPLICATION (SPEC §4.8): the same substantive prose living in two
+ * separately-routed homes. A whole-workspace check: it compares the prose
+ * blocks of every pair of candidate files by Jaccard over word shingles, and
+ * emits one finding per side of a duplicated pair, each naming the other path.
+ */
+function checkDuplication(
+  files: readonly WorkspaceFile[],
+  classifications: Map<string, Classification>,
+  countTokens: TokenCounter,
+  thresholds: Thresholds,
+  findings: Finding[],
+): void {
+  const candidates: DuplicationInput[] = [];
+  for (const file of files) {
+    const c = classifications.get(file.path)!;
+    if (isDuplicationCandidate(file, c)) {
+      candidates.push({ path: file.path, content: file.content });
+    }
+  }
+  const pairs = findDuplicateProse(candidates, {
+    shingleSize: thresholds.duplicationShingleSize,
+    similarityFloor: thresholds.duplicationSimilarityFloor,
+    minBlockTokens: thresholds.duplicationMinBlockTokens,
+    countTokens,
+  });
+  for (const { left, right } of pairs) {
+    findings.push(duplicationFinding(left, right));
+    findings.push(duplicationFinding(right, left));
+  }
+}
+
+/** One side of a duplicated pair: `path`, naming the `other` it duplicates. */
+function duplicationFinding(path: string, other: string): Finding {
+  return {
+    rule: F.F8,
+    severity: WARNING,
+    path,
+    message: `Substantive prose duplicated with ${other}: consolidate to one routed home (F8 DUPLICATION).`,
+  };
+}
+
+/**
+ * True when a file belongs in the DUPLICATION candidate set (SPEC §4.8 guards).
+ * Excludes unclassified files (F2's concern, not duplication), the always-loaded
+ * `.memory/` store and auto-discovered skills (shared or templated prose there
+ * is expected), numbered-stage work files (per-item artifacts), and retired
+ * `archives/` content (a live file vs its own archived copy is the correct route,
+ * not drift; `archives/` is also stripped by the workspace walker's ignore list,
+ * so this guard covers only in-memory trees).
+ */
+function isDuplicationCandidate(file: WorkspaceFile, c: Classification): boolean {
+  if (!file.isText || c.unclassified) return false;
+  const segments = file.path.split('/');
+  if (segments[0] === CANONICAL_HOMES.memory) return false;
+  if (file.path.startsWith(`${CANONICAL_HOMES.skill}/`)) return false;
+  if (segments.includes('archives')) return false;
+  if (c.contentType === 'working' && c.routingLevel === 'L2') return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Ordering
 // ---------------------------------------------------------------------------
 
-/** Sort findings by path, then rule code, for deterministic output. */
+/**
+ * Sort findings by path, then rule code, then message, for deterministic
+ * output. The message tiebreaker matters for F8: a file duplicating two
+ * different others yields two findings at the same path and rule, distinguished
+ * only by the path each message names (SPEC §4.8 mustFix).
+ */
 function sortFindings(findings: Finding[]): Finding[] {
   return [...findings].sort((a, b) => {
     if (a.path !== b.path) return a.path < b.path ? -1 : 1;
-    return a.rule < b.rule ? -1 : a.rule > b.rule ? 1 : 0;
+    if (a.rule !== b.rule) return a.rule < b.rule ? -1 : 1;
+    return a.message < b.message ? -1 : a.message > b.message ? 1 : 0;
   });
 }
