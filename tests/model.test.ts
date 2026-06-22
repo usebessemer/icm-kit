@@ -13,7 +13,7 @@ import {
 } from '../src/model.js';
 
 /**
- * These tests pin the rule model to SPEC v0.1. They are a regression net for
+ * These tests pin the rule model to SPEC v0.6. They are a regression net for
  * the spec-driven discipline: a change here should mean a matching change in
  * SPEC.md landed in the same PR.
  */
@@ -61,7 +61,7 @@ describe('well-formedness rules (SPEC §3)', () => {
 });
 
 describe('failure modes (SPEC §4)', () => {
-  it('encodes F1 to F6 with their codes', () => {
+  it('encodes F1 to F6 and F8 with their codes (F7 reserved, in flight)', () => {
     expect(FAILURE_MODES).toEqual({
       F1: 'MONOLITHIC_CONTEXT',
       F2: 'HIDDEN_CONTEXT',
@@ -69,6 +69,7 @@ describe('failure modes (SPEC §4)', () => {
       F4: 'OVER_ROUTING',
       F5: 'LAYER_BLOAT',
       F6: 'MALFORMED_STAGE_CONTRACT',
+      F8: 'DUPLICATION',
     });
   });
 
@@ -84,6 +85,9 @@ describe('default thresholds (SPEC §4.1, §4.5, W6; §5 q3)', () => {
       fileMaxTokens: 8_000,
       layerBloatProseTokens: 500,
       maxRoutingDepth: 3,
+      duplicationSimilarityFloor: 0.8,
+      duplicationMinBlockTokens: 40,
+      duplicationShingleSize: 5,
     });
   });
 });

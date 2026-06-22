@@ -3,11 +3,13 @@ import {
   countIdentityMarkers,
   declaredWorkFolders,
   extractLoadSkipReferences,
+  findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
   isIdentityHeading,
   namedByClaudeMd,
   parseStageContract,
+  proseBlocks,
   splitSections,
 } from '../src/parse.js';
 import { STAGE_CONTRACT_SECTIONS } from '../src/model.js';
@@ -177,5 +179,199 @@ describe('parseStageContract', () => {
       missing: ['Completion'],
       empty: ['Process'],
     });
+  });
+});
+
+describe('proseBlocks (F8 segmentation, §4.8)', () => {
+  it('normalizes prose and drops code fences, tables, and link-/path-only lines', () => {
+    const md = [
+      '# Heading',
+      'First sentence of PROSE here.',
+      '',
+      '```',
+      'const code = 1;',
+      '```',
+      '| a | b |',
+      '| - | - |',
+      '[link](http://example.com)',
+      'references/voice.md',
+      'Second real sentence.',
+    ].join('\n');
+    expect(proseBlocks(md)).toEqual([
+      ['first', 'sentence', 'of', 'prose', 'here', 'second', 'real', 'sentence'],
+    ]);
+  });
+
+  it('produces one block per heading section and drops empty sections', () => {
+    expect(proseBlocks('# A\nalpha beta\n# B\n\n# C\ngamma')).toEqual([
+      ['alpha', 'beta'],
+      ['gamma'],
+    ]);
+  });
+
+  it('does not read a # inside a fence as a heading, and drops the fenced code', () => {
+    const md = [
+      '# Real Heading',
+      'Actual prose one here.',
+      '',
+      '```sh',
+      '# this shell comment is not a heading',
+      'echo leaked fenced code that must never reach prose',
+      '```',
+      'Actual prose two here.',
+    ].join('\n');
+    const blocks = proseBlocks(md);
+    // One block (the fence did not split the section), and no fenced tokens.
+    expect(blocks).toEqual([
+      ['actual', 'prose', 'one', 'here', 'actual', 'prose', 'two', 'here'],
+    ]);
+    expect(blocks.flat()).not.toContain('echo');
+    expect(blocks.flat()).not.toContain('leaked');
+    expect(blocks.flat()).not.toContain('comment');
+  });
+
+  it('strips an unclosed fence to end of document', () => {
+    const md = ['# H', 'kept prose line', '```', '# not a heading', 'dangling code'].join(
+      '\n',
+    );
+    expect(proseBlocks(md)).toEqual([['kept', 'prose', 'line']]);
+  });
+
+  it('keeps a mismatched inner fence (~~~ inside a ``` block) as code', () => {
+    const md = [
+      '# H',
+      'real prose alpha here.',
+      '```bash',
+      '# shell comment not a heading',
+      'echo one',
+      '~~~',
+      '# still inside the code fence',
+      'echo two',
+      '```',
+      'real prose beta here.',
+    ].join('\n');
+    const blocks = proseBlocks(md);
+    expect(blocks).toEqual([
+      ['real', 'prose', 'alpha', 'here', 'real', 'prose', 'beta', 'here'],
+    ]);
+    expect(blocks.flat()).not.toContain('echo');
+    expect(blocks.flat()).not.toContain('still');
+  });
+
+  it('keeps a shorter inner fence (``` inside a ```` block) as code', () => {
+    const md = [
+      '# H',
+      'intro prose word.',
+      '````md',
+      '```js',
+      'leaked = secret(value)',
+      '```',
+      '````',
+      'outro prose word.',
+    ].join('\n');
+    const blocks = proseBlocks(md);
+    expect(blocks).toEqual([['intro', 'prose', 'word', 'outro', 'prose', 'word']]);
+    expect(blocks.flat()).not.toContain('leaked');
+    expect(blocks.flat()).not.toContain('secret');
+  });
+});
+
+describe('findDuplicateProse (F8 comparator, §4.8)', () => {
+  const wordCount = (t: string): number =>
+    t.trim() ? t.trim().split(/\s+/).length : 0;
+  const opts = {
+    shingleSize: 5,
+    similarityFloor: 0.8,
+    minBlockTokens: 40,
+    countTokens: wordCount,
+  };
+
+  // A 45-word block, comfortably over the 40-token floor.
+  const para =
+    'the operator reviews every incoming digest each morning and files the relevant ' +
+    'items under the correct client label before the standup so that nothing slips ' +
+    'through the cracks and the weekly report stays accurate complete and genuinely ' +
+    'useful to the whole distributed team across regions';
+
+  // A distinct 45-word block sharing no 5-word shingle with `para`.
+  const otherPara =
+    'budget forecasts for the upcoming fiscal year depend heavily on procurement ' +
+    'timelines vendor negotiations and seasonal demand which finance models separately ' +
+    'using historical baselines while marketing prepares independent campaigns targeting ' +
+    'newer audiences in emerging coastal markets through partnerships and paid experiments';
+
+  it('pairs two files sharing an identical block over the token floor', () => {
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: `# A\n${para}` },
+          { path: 'b.md', content: `# B\n${para}` },
+        ],
+        opts,
+      ),
+    ).toEqual([{ left: 'a.md', right: 'b.md' }]);
+  });
+
+  it('does not pair when the shared block is below the token floor', () => {
+    const short = 'a tiny shared line of prose';
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: `# A\n${short}` },
+          { path: 'b.md', content: `# B\n${short}` },
+        ],
+        opts,
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not pair genuinely different prose blocks', () => {
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: `# A\n${para}` },
+          { path: 'b.md', content: `# B\n${otherPara}` },
+        ],
+        opts,
+      ),
+    ).toEqual([]);
+  });
+
+  it('orders each returned pair by input order (deterministic)', () => {
+    const pairs = findDuplicateProse(
+      [
+        { path: 'context/x.md', content: `# X\n${para}` },
+        { path: 'references/y.md', content: `# Y\n${para}` },
+      ],
+      opts,
+    );
+    expect(pairs).toEqual([
+      { left: 'context/x.md', right: 'references/y.md' },
+    ]);
+  });
+
+  it('compares a sub-shingle-width block as a single whole-block shingle', () => {
+    // A block with fewer words than the shingle width still shingles (as one
+    // whole-block token), so identical short-but-over-floor blocks match and
+    // distinct ones do not. Floor lowered so the 3-word blocks qualify.
+    const lowFloor = { ...opts, minBlockTokens: 1 };
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: '# A\nthree word block' },
+          { path: 'b.md', content: '# B\nthree word block' },
+        ],
+        lowFloor,
+      ),
+    ).toEqual([{ left: 'a.md', right: 'b.md' }]);
+    expect(
+      findDuplicateProse(
+        [
+          { path: 'a.md', content: '# A\nthree word block' },
+          { path: 'b.md', content: '# B\nfour different short words' },
+        ],
+        lowFloor,
+      ),
+    ).toEqual([]);
   });
 });

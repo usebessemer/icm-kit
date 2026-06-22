@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('0.1.0');
+  .version('0.6.0');
 
 program
   .command('init')
@@ -44,7 +44,7 @@ program
 
 function report(findings: readonly Finding[]): void {
   if (findings.length === 0) {
-    console.log('No findings: workspace is ICM-compliant against SPEC v0.3.');
+    console.log('No findings: workspace is ICM-compliant against SPEC v0.6.');
     return;
   }
   for (const f of findings) {

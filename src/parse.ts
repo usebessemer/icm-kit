@@ -5,7 +5,8 @@
  * rely on lives here, in one module, so the two cannot drift: load/skip-table
  * detection and pointer extraction (F3), identity-heading and density-based
  * behaviour-block detection (F5, F1 soft signal / W3), declared-work-folder
- * detection (§2.5 work-folder row), and stage-contract section parsing (W7/F6).
+ * detection (§2.5 work-folder row), stage-contract section parsing (W7/F6),
+ * and cross-file prose-duplication segmentation and comparison (F8).
  *
  * These are deliberately coarse heuristics, hardened in #11 against the real-
  * AIOS failure shapes the synthetic fixture missed (directive-dense ops bloat,
@@ -16,6 +17,7 @@
 
 import { baseName } from './paths.js';
 import { STAGE_FOLDER_PATTERN } from './model.js';
+import type { TokenCounter } from './tokens.js';
 
 // ---------------------------------------------------------------------------
 // Load/skip tables (§2.3, §2.5) and the pointers in them (F3)
@@ -319,4 +321,224 @@ export function parseStageContract(
     }
   }
   return { missing, empty };
+}
+
+// ---------------------------------------------------------------------------
+// Prose duplication (F8 DUPLICATION, §4.8)
+// ---------------------------------------------------------------------------
+
+/**
+ * A line that is purely a Markdown link, a bare URL, or a single path/filename
+ * token: structure, not substantive prose, so it is dropped from a block. A
+ * mixed line (a path inside a sentence) is kept; only whole-line matches drop.
+ */
+function isLinkOrPathOnly(line: string): boolean {
+  const stripped = line.replace(/^[-*+]\s+/, '').trim();
+  if (stripped === '') return false;
+  if (/^\[[^\]]*\]\([^)]*\)$/.test(stripped)) return true; // [text](url)
+  if (/^<?https?:\/\/\S+>?$/.test(stripped)) return true; // bare URL
+  if (/^`?[\w./-]+\.[A-Za-z0-9]{1,8}`?$/.test(stripped)) return true; // a path
+  return false;
+}
+
+/**
+ * A Markdown code-fence marker: the fence character (backtick or tilde) and its
+ * run length, plus whether the line could *close* a fence (a closer carries no
+ * info string, only trailing whitespace). `null` for a non-fence line. Up to
+ * three leading spaces of indentation are allowed (CommonMark).
+ */
+function fenceMarker(
+  line: string,
+): { char: string; length: number; closeable: boolean } | null {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+  if (!match) return null;
+  return {
+    char: match[1][0],
+    length: match[1].length,
+    closeable: match[2].trim() === '',
+  };
+}
+
+/**
+ * Remove fenced code blocks (``` / ~~~) from Markdown at the document level,
+ * before any heading split, honouring CommonMark fence rules: a block opened by
+ * a run of backticks or tildes closes only on a line of the *same* character
+ * with a run *at least as long* and no info string. That is what keeps a
+ * `#`-prefixed line inside a fence (a shell comment, a documented heading
+ * example) from being read as a real heading, and keeps a mismatched or shorter
+ * inner fence (a `~~~` inside a ```-block, or a ``` inside a ````-block, the
+ * usual way docs show a fence verbatim) as code rather than a spurious closer.
+ * Stripping fences first means `splitSections` never splits on one, so fenced
+ * code can never desync section boundaries or leak into the comparison (F8). An
+ * unclosed fence strips to end of document: its content is code, not prose.
+ */
+function stripFencedCode(content: string): string {
+  const out: string[] = [];
+  let open: { char: string; length: number } | null = null;
+  for (const line of content.split('\n')) {
+    const fence = fenceMarker(line);
+    if (open === null) {
+      if (fence) {
+        open = { char: fence.char, length: fence.length };
+        continue; // drop the opening fence line
+      }
+      out.push(line);
+    } else if (
+      fence &&
+      fence.char === open.char &&
+      fence.length >= open.length &&
+      fence.closeable
+    ) {
+      open = null;
+      continue; // drop the closing fence line
+    }
+    // Any other line while a fence is open (including a non-matching inner
+    // fence) is code, and is dropped by falling through without a push.
+  }
+  return out.join('\n');
+}
+
+/**
+ * The normalized words of one section body, for shingling (F8). Table rows,
+ * blank lines, and link-/path-only lines are dropped; the rest is lowercased and
+ * reduced to word tokens (Markdown punctuation falls away), so comparison is
+ * over substance, not formatting. Fenced code is already gone (stripped at the
+ * document level by `proseBlocks` before the heading split).
+ */
+function blockWords(body: string): string[] {
+  const kept: string[] = [];
+  for (const raw of body.split('\n')) {
+    const line = raw.trim();
+    if (line === '') continue;
+    if (isTableRow(raw)) continue;
+    if (isLinkOrPathOnly(line)) continue;
+    kept.push(line);
+  }
+  return kept.join(' ').toLowerCase().match(WORD) ?? [];
+}
+
+/**
+ * Segment Markdown into normalized prose blocks for the DUPLICATION check
+ * (F8, SPEC §4.8): one word list per heading section (the preamble included),
+ * with fenced code stripped up front (so a `#` inside a fence is never read as a
+ * heading), then tables and link-/path-only lines removed. Empty blocks are
+ * dropped. Headings themselves are delimiters, never block content, so shared
+ * short headings and stage-contract section labels never count as duplication.
+ */
+export function proseBlocks(content: string): string[][] {
+  const blocks: string[][] = [];
+  for (const section of splitSections(stripFencedCode(content))) {
+    const words = blockWords(section.body);
+    if (words.length > 0) blocks.push(words);
+  }
+  return blocks;
+}
+
+/** The set of contiguous `size`-word shingles in `words` (F8). */
+function shingleSet(words: string[], size: number): Set<string> {
+  const shingles = new Set<string>();
+  if (words.length < size) {
+    if (words.length > 0) shingles.add(words.join(' '));
+    return shingles;
+  }
+  for (let i = 0; i + size <= words.length; i += 1) {
+    shingles.add(words.slice(i, i + size).join(' '));
+  }
+  return shingles;
+}
+
+/** Jaccard similarity of two shingle sets: |A ∩ B| / |A ∪ B|. */
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let intersection = 0;
+  for (const shingle of small) if (large.has(shingle)) intersection += 1;
+  return intersection / (a.size + b.size - intersection);
+}
+
+/** One candidate file for the duplication comparison: a path and its text. */
+export interface DuplicationInput {
+  readonly path: string;
+  readonly content: string;
+}
+
+/** Tunables for {@link findDuplicateProse} (the §4.8 thresholds, injected). */
+export interface DuplicationOptions {
+  /** Word-shingle size (`duplicationShingleSize`). */
+  readonly shingleSize: number;
+  /** Jaccard floor for a duplicate block pair (`duplicationSimilarityFloor`). */
+  readonly similarityFloor: number;
+  /** Minimum block size to compare, in tokens (`duplicationMinBlockTokens`). */
+  readonly minBlockTokens: number;
+  /** Token counter, the size signal for the block floor. */
+  readonly countTokens: TokenCounter;
+}
+
+/** A pair of distinct files that share a duplicate prose block (F8). */
+export interface DuplicatePair {
+  readonly left: string;
+  readonly right: string;
+}
+
+/**
+ * The qualifying shingle sets of one file: blocks at or over the token floor.
+ *
+ * The floor measures the block's raw token count, while Jaccard runs over the
+ * shingle *set*, so a heavily-repeated short line clears the floor on a small
+ * set of unique shingles (SPEC §4.8). That is intentional for v0.6: repeated
+ * boilerplate copied across routed homes is itself duplication worth flagging.
+ * A unique-shingle minimum to discount pure repetition is deferred to calibration.
+ */
+function qualifyingShingleSets(
+  content: string,
+  opts: DuplicationOptions,
+): Set<string>[] {
+  const sets: Set<string>[] = [];
+  for (const words of proseBlocks(content)) {
+    if (opts.countTokens(words.join(' ')) < opts.minBlockTokens) continue;
+    const shingles = shingleSet(words, opts.shingleSize);
+    if (shingles.size > 0) sets.push(shingles);
+  }
+  return sets;
+}
+
+/**
+ * Find every pair of distinct files sharing a duplicate prose block (F8, SPEC
+ * §4.8). Each file is segmented into normalized blocks; blocks below the token
+ * floor are dropped; the surviving blocks are compared pairwise across files by
+ * Jaccard over word shingles. A file pair is returned once if any block pair
+ * meets the floor, with `left`/`right` in input order (so a path-sorted input
+ * yields deterministic, lexically-ordered pairs).
+ */
+export function findDuplicateProse(
+  files: readonly DuplicationInput[],
+  opts: DuplicationOptions,
+): DuplicatePair[] {
+  const indexed = files.map((file) => ({
+    path: file.path,
+    blocks: qualifyingShingleSets(file.content, opts),
+  }));
+  const pairs: DuplicatePair[] = [];
+  for (let i = 0; i < indexed.length; i += 1) {
+    for (let j = i + 1; j < indexed.length; j += 1) {
+      if (blocksOverlap(indexed[i].blocks, indexed[j].blocks, opts.similarityFloor)) {
+        pairs.push({ left: indexed[i].path, right: indexed[j].path });
+      }
+    }
+  }
+  return pairs;
+}
+
+/** True if any block of `a` is at or above the floor against any block of `b`. */
+function blocksOverlap(
+  a: Set<string>[],
+  b: Set<string>[],
+  floor: number,
+): boolean {
+  for (const blockA of a) {
+    for (const blockB of b) {
+      if (jaccard(blockA, blockB) >= floor) return true;
+    }
+  }
+  return false;
 }
