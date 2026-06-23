@@ -13,7 +13,7 @@ import {
 } from '../src/model.js';
 
 /**
- * These tests pin the rule model to SPEC v0.7. They are a regression net for
+ * These tests pin the rule model to SPEC v0.8. They are a regression net for
  * the spec-driven discipline: a change here should mean a matching change in
  * SPEC.md landed in the same PR.
  */
@@ -61,7 +61,7 @@ describe('well-formedness rules (SPEC §3)', () => {
 });
 
 describe('failure modes (SPEC §4)', () => {
-  it('encodes F1 to F6, F8, and F9 with their codes (F7 reserved, in flight)', () => {
+  it('encodes F1 to F9 with their codes, contiguous in section order', () => {
     expect(FAILURE_MODES).toEqual({
       F1: 'MONOLITHIC_CONTEXT',
       F2: 'HIDDEN_CONTEXT',
@@ -69,6 +69,7 @@ describe('failure modes (SPEC §4)', () => {
       F4: 'OVER_ROUTING',
       F5: 'LAYER_BLOAT',
       F6: 'MALFORMED_STAGE_CONTRACT',
+      F7: 'KIT_BOILERPLATE',
       F8: 'DUPLICATION',
       F9: 'SUPERSEDED_BUT_LIVE',
     });

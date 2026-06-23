@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('0.7.0');
+  .version('0.8.0');
 
 program
   .command('init')
@@ -28,14 +28,20 @@ program
     '--ignore <names>',
     'comma-separated file/dir names to skip, merged with the defaults',
   )
-  .action((path: string, options: { ignore?: string }) => {
+  .option(
+    '--fork-point <ref>',
+    'git commit marking the fork/import boundary for KIT_BOILERPLATE (F7); defaults to the repository root commit',
+  )
+  .action((path: string, options: { ignore?: string; forkPoint?: string }) => {
     const ignore = options.ignore
       ? options.ignore
           .split(',')
           .map((name) => name.trim())
           .filter(Boolean)
       : undefined;
-    const findings = audit(readWorkspace(resolve(path), { ignore }));
+    const findings = audit(
+      readWorkspace(resolve(path), { ignore, forkPoint: options.forkPoint }),
+    );
     report(findings);
     // Output and exit policy are the tool's concern (SPEC §5): a clean
     // workspace exits 0, any finding exits non-zero so checks can gate on it.
@@ -44,7 +50,7 @@ program
 
 function report(findings: readonly Finding[]): void {
   if (findings.length === 0) {
-    console.log('No findings: workspace is ICM-compliant against SPEC v0.7.');
+    console.log('No findings: workspace is ICM-compliant against SPEC v0.8.');
     return;
   }
   for (const f of findings) {

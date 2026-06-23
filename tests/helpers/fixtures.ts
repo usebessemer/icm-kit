@@ -16,11 +16,28 @@ import type { Workspace, WorkspaceFile } from '../../src/workspace.js';
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Synthetic git provenance for `buildWorkspace`, keyed by path. Each entry sets
+ * the KIT_BOILERPLATE (§4.7) facts a real `readGitInfo` would resolve; omitted
+ * fields and omitted paths default to off-repo (`tracked: false`), so a fixture
+ * never fires F7 unless it opts in. This is the test seam: the committed
+ * fixtures live in icm-kit's own git history, so a real fork point cannot be
+ * faked there, and F7's git signal is injected here instead.
+ */
+export type SyntheticGit = Record<
+  string,
+  Partial<Pick<WorkspaceFile, 'tracked' | 'postForkCommits' | 'existedAtForkPoint'>>
+>;
+
+/**
  * Build an in-memory Workspace from a `path -> content` map, for rule tests
  * that need a precise tree without committing fixture directories. Mirrors the
- * shape `readWorkspace` produces.
+ * shape `readWorkspace` produces. The optional `git` map injects per-path
+ * provenance for KIT_BOILERPLATE (§4.7); paths default to off-repo.
  */
-export function buildWorkspace(contents: Record<string, string>): Workspace {
+export function buildWorkspace(
+  contents: Record<string, string>,
+  git: SyntheticGit = {},
+): Workspace {
   const files: WorkspaceFile[] = Object.keys(contents)
     .sort()
     .map((path) => ({
@@ -28,6 +45,9 @@ export function buildWorkspace(contents: Record<string, string>): Workspace {
       content: contents[path],
       bytes: Buffer.byteLength(contents[path], 'utf8'),
       isText: true,
+      tracked: git[path]?.tracked ?? false,
+      postForkCommits: git[path]?.postForkCommits ?? null,
+      existedAtForkPoint: git[path]?.existedAtForkPoint ?? false,
     }));
   const tree = files.map((f) => f.path);
   const claudeMd = new Map<string, string>();

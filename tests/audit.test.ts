@@ -537,6 +537,140 @@ describe('audit(): F9 SUPERSEDED_BUT_LIVE (§4.9)', () => {
   });
 });
 
+describe('audit(): F7 KIT_BOILERPLATE (§4.7, injected synthetic git)', () => {
+  // The committed fixtures live in icm-kit's own git history, so a real fork
+  // point cannot be faked there; F7's git signal is injected via buildWorkspace's
+  // 2nd arg instead (see fixtures.ts). "Inherited and never adapted": present at
+  // the fork point, no commit since.
+  const boilerplate = {
+    tracked: true,
+    existedAtForkPoint: true,
+    postForkCommits: 0,
+  };
+
+  it('fires once on a tracked, routed reference file untouched since the fork', () => {
+    const findings = audit(
+      buildWorkspace(
+        {
+          'CLAUDE.md': '# Root identity',
+          'references/3ms-framework.md': '# 3MS framework\n\nUpstream kit content.',
+        },
+        { 'references/3ms-framework.md': boilerplate },
+      ),
+    );
+    const f7 = rule(findings, 'KIT_BOILERPLATE');
+    expect(f7).toHaveLength(1);
+    expect(f7[0].path).toBe('references/3ms-framework.md');
+    expect(f7[0].relatedRule).toBeUndefined();
+    expect(f7[0].message).toMatch(/\(F7 KIT_BOILERPLATE\)\.$/);
+  });
+
+  it('fires on a routed skill: an un-adapted kit skill is exactly the target', () => {
+    const findings = audit(
+      buildWorkspace(
+        {
+          'CLAUDE.md': '# Root identity',
+          '.claude/skills/onboard/SKILL.md':
+            '# Onboard\n\nUpstream skill, never adapted.',
+        },
+        { '.claude/skills/onboard/SKILL.md': boilerplate },
+      ),
+    );
+    expect(paths(findings, 'KIT_BOILERPLATE')).toEqual([
+      '.claude/skills/onboard/SKILL.md',
+    ]);
+  });
+
+  it('is silent once a single commit after the fork has touched the file', () => {
+    // postForkCommits is the one distinguishing variable from the positive case.
+    const findings = audit(
+      buildWorkspace(
+        {
+          'CLAUDE.md': '# Root identity',
+          'references/3ms-framework.md': '# 3MS framework\n\nNow adapted.',
+        },
+        {
+          'references/3ms-framework.md': {
+            tracked: true,
+            existedAtForkPoint: true,
+            postForkCommits: 1,
+          },
+        },
+      ),
+    );
+    expect(rule(findings, 'KIT_BOILERPLATE')).toHaveLength(0);
+  });
+
+  it('never flags CLAUDE.md, even untouched since the fork (identity is exempt)', () => {
+    const findings = audit(
+      buildWorkspace(
+        { 'CLAUDE.md': '# Root identity\n\nUntouched since the fork.' },
+        { 'CLAUDE.md': boilerplate },
+      ),
+    );
+    expect(rule(findings, 'KIT_BOILERPLATE')).toHaveLength(0);
+  });
+
+  it('is silent off-repo (the default untracked provenance)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/doc.md': '# Doc\n\nContent, but no git history is injected.',
+      }),
+    );
+    expect(rule(findings, 'KIT_BOILERPLATE')).toHaveLength(0);
+  });
+
+  it('exempts the harness and work homes, even when untouched since the fork', () => {
+    // .memory/ is always-loaded; an NN-stage file is per-task scratch. "Untouched
+    // since fork" is expected in both, not a defect (the anti-noise guard).
+    const findings = audit(
+      buildWorkspace(
+        {
+          'CLAUDE.md': '# Root identity',
+          '.memory/note.md': '# Note\n\nAlways-loaded memory.',
+          '02-build/spec.md': '# Spec\n\nStage scratch.',
+        },
+        {
+          '.memory/note.md': boilerplate,
+          '02-build/spec.md': boilerplate,
+        },
+      ),
+    );
+    expect(rule(findings, 'KIT_BOILERPLATE')).toHaveLength(0);
+  });
+
+  it('exempts a routed file under archives/ (retired content)', () => {
+    const findings = audit(
+      buildWorkspace(
+        {
+          'CLAUDE.md': '# Root identity\n\nRetired drafts live under `archives/`.',
+          'archives/old.md': '# Old\n\nRetired, untouched since the fork.',
+        },
+        { 'archives/old.md': boilerplate },
+      ),
+    );
+    expect(rule(findings, 'KIT_BOILERPLATE')).toHaveLength(0);
+    // The file is routed (declared work folder), so the silence is the archive
+    // guard, not the unrouted guard: F2 would fire on an unrouted file.
+    expect(at(findings, 'HIDDEN_CONTEXT', 'archives/old.md')).toBeUndefined();
+  });
+
+  it('reports an unrouted untouched file as F2 HIDDEN_CONTEXT, not F7', () => {
+    const findings = audit(
+      buildWorkspace(
+        {
+          'CLAUDE.md': '# Root identity',
+          'orphan.md': '# Orphan\n\nUnrouted and untouched since the fork.',
+        },
+        { 'orphan.md': boilerplate },
+      ),
+    );
+    expect(rule(findings, 'KIT_BOILERPLATE')).toHaveLength(0);
+    expect(at(findings, 'HIDDEN_CONTEXT', 'orphan.md')).toBeDefined();
+  });
+});
+
 describe('audit(): work-folder declaration', () => {
   it('a folder named only in the Skip column is not a work folder (file is hidden)', () => {
     const findings = audit(

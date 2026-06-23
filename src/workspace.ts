@@ -20,6 +20,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { readGitInfo } from './git.js';
 import { ROOT_IDENTITY_FILE } from './model.js';
 
 /** Directory and file names skipped while walking (name-based, any depth). */
@@ -45,6 +46,17 @@ export interface WorkspaceFile {
   readonly bytes: number;
   /** True when the file is UTF-8 text (no NUL byte in its head). */
   readonly isText: boolean;
+  /**
+   * Git provenance, the signal behind KIT_BOILERPLATE (§4.7); resolved once for
+   * the whole workspace by `readGitInfo`. Defaults (`tracked: false`,
+   * `postForkCommits: null`, `existedAtForkPoint: false`) describe a file off any
+   * git repository, so F7 never fires without real git history.
+   */
+  readonly tracked: boolean;
+  /** Commits after the fork-point commit that touched this path (§4.7). */
+  readonly postForkCommits: number | null;
+  /** True when the file existed at the fork-point commit (§4.7). */
+  readonly existedAtForkPoint: boolean;
 }
 
 /** A workspace read from disk, ready to classify and audit. */
@@ -63,6 +75,8 @@ export interface Workspace {
 export interface ReadWorkspaceOptions {
   /** Extra names to skip, merged with `IGNORED_NAMES`. */
   readonly ignore?: Iterable<string>;
+  /** Fork-point commit for KIT_BOILERPLATE (§4.7); default the root commit. */
+  readonly forkPoint?: string;
 }
 
 /** Read the workspace rooted at the directory `root`. */
@@ -73,9 +87,19 @@ export function readWorkspace(
   const ignore = new Set(IGNORED_NAMES);
   for (const name of options.ignore ?? []) ignore.add(name);
 
-  const files: WorkspaceFile[] = [];
-  walk(root, root, files, ignore);
-  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const walked: WorkspaceFile[] = [];
+  walk(root, root, walked, ignore);
+  walked.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+
+  // Resolve git provenance once for the whole tree (one git pass, not one per
+  // file), then attach each file's facts; off-repo this is empty and the file
+  // keeps its untracked defaults (SPEC §4.7). Git metadata is orthogonal to the
+  // CRLF normalization the file walk already applies.
+  const gitInfo = readGitInfo(root, options.forkPoint);
+  const files = walked.map((file) => {
+    const git = gitInfo.get(file.path);
+    return git ? { ...file, ...git } : file;
+  });
 
   const tree = files.map((f) => f.path);
   const claudeMd = new Map<string, string>();
@@ -111,7 +135,7 @@ function readFile(abs: string, path: string): WorkspaceFile {
   try {
     buffer = readFileSync(abs);
   } catch {
-    return { path, content: '', bytes: safeSize(abs), isText: false };
+    return { path, content: '', bytes: safeSize(abs), isText: false, ...NO_GIT };
   }
   const isText = !hasNulByte(buffer);
   return {
@@ -122,8 +146,18 @@ function readFile(abs: string, path: string): WorkspaceFile {
     content: isText ? buffer.toString('utf8').replace(/\r\n/g, '\n') : '',
     bytes: buffer.length,
     isText,
+    // Git provenance is attached in `readWorkspace` after a single git pass;
+    // until then a file reads as off-repo (SPEC §4.7).
+    ...NO_GIT,
   };
 }
+
+/** Default git provenance: a file off any git repository (SPEC §4.7). */
+const NO_GIT = {
+  tracked: false,
+  postForkCommits: null,
+  existedAtForkPoint: false,
+} as const;
 
 /** True if a NUL byte appears in the head of the buffer (the binary signal). */
 function hasNulByte(buffer: Buffer): boolean {
