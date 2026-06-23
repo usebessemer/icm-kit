@@ -6,6 +6,7 @@ import {
   findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
+  hasSupersededBanner,
   isIdentityHeading,
   namedByClaudeMd,
   parseStageContract,
@@ -373,5 +374,79 @@ describe('findDuplicateProse (F8 comparator, §4.8)', () => {
         lowFloor,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('hasSupersededBanner (F9 top-region banner, §4.9)', () => {
+  const scan = 15;
+
+  it('fires on a blockquote banner as the first line', () => {
+    expect(
+      hasSupersededBanner('> Superseded: replaced by references/new.md.\n\nold notes', scan),
+    ).toBe(true);
+  });
+
+  it('fires on a banner under a title heading (top region spans the first section)', () => {
+    expect(hasSupersededBanner('# Old plan\n\n> Deprecated: see build-c.md', scan)).toBe(true);
+  });
+
+  it('fires on bolded, heading-styled, and status: marker forms', () => {
+    expect(hasSupersededBanner('**Deprecated** — do not use.', scan)).toBe(true);
+    expect(hasSupersededBanner('## Retired\n\nmoved to archives', scan)).toBe(true);
+    expect(hasSupersededBanner('Status: superseded\n\nbody', scan)).toBe(true);
+    expect(hasSupersededBanner('Reframed: this became build-b.', scan)).toBe(true);
+  });
+
+  it('does not fire on a deprecation mentioned mid-line in prose', () => {
+    expect(
+      hasSupersededBanner('# Notes\n\nThe v1 pipeline was deprecated last year.', scan),
+    ).toBe(false);
+  });
+
+  it('does not fire on a marker word that is not at line start', () => {
+    expect(hasSupersededBanner('The plan is now obsolete and retired.', scan)).toBe(false);
+  });
+
+  it('does not scan past the line cap or out of the first section', () => {
+    const deep = '# T\n\nintro\n\n## Later\n\n> Superseded: x';
+    expect(hasSupersededBanner(deep, scan)).toBe(false); // banner is in a later section
+    const buried = ['# T', ...Array(20).fill('filler line'), '> Superseded: x'].join('\n');
+    expect(hasSupersededBanner(buried, scan)).toBe(false); // beyond the 15-line cap
+  });
+
+  it('does not fire on an empty or banner-less file', () => {
+    expect(hasSupersededBanner('', scan)).toBe(false);
+    expect(hasSupersededBanner('# Spec\n\nA working build spec, current and live.', scan)).toBe(
+      false,
+    );
+  });
+
+  it('gives a heading-first file the full scan budget (no phantom-preamble off-by-one)', () => {
+    const banner = '> Deprecated: use v2 instead.';
+    // "# Title" is physical line 1; a banner on physical line 15 must still fire.
+    const at15 = ['# Title', ...Array(13).fill('filler prose line.'), banner].join('\n');
+    expect(hasSupersededBanner(at15, 15)).toBe(true);
+    // A banner on physical line 16 is past the cap.
+    const at16 = ['# Title', ...Array(14).fill('filler prose line.'), banner].join('\n');
+    expect(hasSupersededBanner(at16, 15)).toBe(false);
+  });
+
+  it('does not treat a marker inside a fenced code example as a banner', () => {
+    const fenced = [
+      '# Config reference',
+      '',
+      '```yaml',
+      'status: deprecated',
+      'name: example',
+      '```',
+      '',
+      'Current, in active use.',
+    ].join('\n');
+    expect(hasSupersededBanner(fenced, scan)).toBe(false);
+    // A real banner after the fence still fires (fence is stripped, not the file).
+    const real = ['```sh', 'echo example', '```', '', '> Superseded: replaced by new.md'].join(
+      '\n',
+    );
+    expect(hasSupersededBanner(real, scan)).toBe(true);
   });
 });

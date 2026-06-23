@@ -458,6 +458,73 @@ describe('audit(): F8 DUPLICATION (whole-workspace, §4.8)', () => {
   });
 });
 
+describe('audit(): F9 SUPERSEDED_BUT_LIVE (§4.9)', () => {
+  it('fires on a live-routed file opening with a superseded banner, backing W5', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/old.md': '> Superseded: replaced by references/new.md.\n\nstale notes',
+      }),
+    );
+    const f9 = at(findings, 'SUPERSEDED_BUT_LIVE', 'references/old.md');
+    expect(f9?.relatedRule).toBe('ROUTABLE_FILES');
+    expect(f9?.message).toMatch(/\(F9 SUPERSEDED_BUT_LIVE\)\.$/);
+    expect(f9?.message).toContain('reference');
+  });
+
+  it('is silent on a deprecation mentioned mid-document, not at line start', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/notes.md': '# Notes\n\nThe v1 pipeline was deprecated last year.',
+      }),
+    );
+    expect(rule(findings, 'SUPERSEDED_BUT_LIVE')).toHaveLength(0);
+  });
+
+  it('is silent on a banner file that already lives under archives/', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity\n\nSee `archives/old.md`.',
+        'archives/old.md': '> Superseded: replaced by references/new.md.\n\nretired',
+      }),
+    );
+    expect(rule(findings, 'SUPERSEDED_BUT_LIVE')).toHaveLength(0);
+  });
+
+  it('is silent on an unclassified banner file (that is F2 HIDDEN_CONTEXT, not F9)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'orphan.md': '> Deprecated: do not use.\n\nunrouted and dead',
+      }),
+    );
+    expect(rule(findings, 'SUPERSEDED_BUT_LIVE')).toHaveLength(0);
+    expect(at(findings, 'HIDDEN_CONTEXT', 'orphan.md')).toBeDefined();
+  });
+
+  it('is silent on a live file with no banner', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/live.md': '# Live\n\nCurrent reference content, in active use.',
+      }),
+    );
+    expect(rule(findings, 'SUPERSEDED_BUT_LIVE')).toHaveLength(0);
+  });
+
+  it('is silent when a marker word only appears inside a top-of-file code example', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/config.md':
+          '# Config\n\n```yaml\nstatus: deprecated\nname: example\n```\n\nCurrent, in active use.',
+      }),
+    );
+    expect(rule(findings, 'SUPERSEDED_BUT_LIVE')).toHaveLength(0);
+  });
+});
+
 describe('audit(): work-folder declaration', () => {
   it('a folder named only in the Skip column is not a work folder (file is hidden)', () => {
     const findings = audit(
@@ -557,7 +624,16 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
     );
   });
 
+  it('F9 / W5: the one live-routed file carrying a superseded banner', () => {
+    expect(paths(findings, 'SUPERSEDED_BUT_LIVE')).toEqual([
+      'references/superseded-routing.md',
+    ]);
+    expect(
+      at(findings, 'SUPERSEDED_BUT_LIVE', 'references/superseded-routing.md')?.relatedRule,
+    ).toBe('ROUTABLE_FILES');
+  });
+
   it('produces exactly the expected findings', () => {
-    expect(findings).toHaveLength(14);
+    expect(findings).toHaveLength(15);
   });
 });

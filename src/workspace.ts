@@ -116,7 +116,10 @@ function readFile(abs: string, path: string): WorkspaceFile {
   const isText = !hasNulByte(buffer);
   return {
     path,
-    content: isText ? buffer.toString('utf8') : '',
+    // Normalize CRLF to LF on read: the parse heuristics (fence/heading scans
+    // behind F3/F5/F6/F8/F9) are line-start regexes that a trailing `\r` would
+    // defeat, so every rule sees Unix newlines regardless of the file's origin.
+    content: isText ? buffer.toString('utf8').replace(/\r\n/g, '\n') : '',
     bytes: buffer.length,
     isText,
   };

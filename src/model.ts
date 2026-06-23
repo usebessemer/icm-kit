@@ -1,7 +1,7 @@
 /**
  * The ICM rule model.
  *
- * This module is the TypeScript encoding of SPEC.md (SPEC v0.6). It is the
+ * This module is the TypeScript encoding of SPEC.md (SPEC v0.7). It is the
  * single source both `init` and `audit` consume: the classification axes
  * (SPEC §2.2 to §2.4), the classification result shape (§2.5), the
  * well-formedness rules (§3), and the failure modes (§4).
@@ -140,9 +140,9 @@ export type Severity = (typeof SEVERITIES)[number];
  * Stable identifiers for the failure-mode lint rules (SPEC §4).
  *
  * `F7` (`KIT_BOILERPLATE`) is reserved and in flight: it lands with the
- * git-history rule, so until then the codes are non-contiguous (`F8` exists
- * before `F7` does). Each code is bound to its rule by name, never by position
- * (SPEC §4 intro), so this gap is benign.
+ * git-history rule, so until then the codes are non-contiguous (`F8` and `F9`
+ * exist before `F7` does). Each code is bound to its rule by name, never by
+ * position (SPEC §4 intro), so this gap is benign.
  */
 export const FAILURE_MODES = {
   F1: 'MONOLITHIC_CONTEXT',
@@ -152,6 +152,7 @@ export const FAILURE_MODES = {
   F5: 'LAYER_BLOAT',
   F6: 'MALFORMED_STAGE_CONTRACT',
   F8: 'DUPLICATION',
+  F9: 'SUPERSEDED_BUT_LIVE',
 } as const;
 
 export type FailureModeId = keyof typeof FAILURE_MODES;
@@ -195,6 +196,8 @@ export interface Thresholds {
   readonly duplicationMinBlockTokens: number;
   /** DUPLICATION word-shingle size for the Jaccard comparison (§4.8). */
   readonly duplicationShingleSize: number;
+  /** SUPERSEDED_BUT_LIVE top-region scan depth, in lines (§4.9). */
+  readonly supersededBannerScanLines: number;
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
@@ -205,6 +208,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   duplicationSimilarityFloor: 0.8,
   duplicationMinBlockTokens: 40,
   duplicationShingleSize: 5,
+  supersededBannerScanLines: 15,
 };
 
 // ---------------------------------------------------------------------------

@@ -27,6 +27,21 @@ export function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith('.md');
 }
 
+/**
+ * Folder names that hold retired content. A file under one of these is not
+ * "live": it is excluded from live-routing checks (the F8 DUPLICATION candidate
+ * set, §4.8, and F9 SUPERSEDED_BUT_LIVE, §4.9). `archives` is also in the
+ * workspace walker's `IGNORED_NAMES`, so on a real disk walk such files never
+ * reach the audit at all; this shared helper covers in-memory trees and keeps
+ * the two homes' definition in one place.
+ */
+export const ARCHIVE_HOMES: ReadonlySet<string> = new Set(['archives']);
+
+/** True when any path segment is an archive home (retired content). */
+export function isUnderArchive(path: string): boolean {
+  return path.split('/').some((segment) => ARCHIVE_HOMES.has(segment));
+}
+
 /** The directory of every `CLAUDE.md` in the tree: one per workspace root. */
 export function workspaceRootDirs(tree: readonly string[]): string[] {
   return tree
