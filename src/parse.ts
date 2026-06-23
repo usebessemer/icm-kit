@@ -6,7 +6,8 @@
  * detection and pointer extraction (F3), identity-heading and density-based
  * behaviour-block detection (F5, F1 soft signal / W3), declared-work-folder
  * detection (§2.5 work-folder row), stage-contract section parsing (W7/F6),
- * and cross-file prose-duplication segmentation and comparison (F8).
+ * cross-file prose-duplication segmentation and comparison (F8), and
+ * superseded-banner detection in a file's top region (F9).
  *
  * These are deliberately coarse heuristics, hardened in #11 against the real-
  * AIOS failure shapes the synthetic fixture missed (directive-dense ops bloat,
@@ -541,4 +542,98 @@ function blocksOverlap(
     }
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Superseded banners (F9 SUPERSEDED_BUT_LIVE, §4.9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Phrase markers that are self-complete: a top-region line opening with one is a
+ * banner even bare, because the phrase typically precedes a target path
+ * (`Replaced by build-c.md`). Matched with `startsWith` (a trailing `\b`).
+ */
+const SUPERSEDED_PHRASE_MARKERS = ['replaced by', 'no longer current'];
+
+/**
+ * Single-word markers that also occur as ordinary prose openers (`# Deprecated
+ * features`, `Do not use tabs`). To avoid that false-positive class they fire
+ * only when *label-shaped* (see `WORD_BANNER`): the marker is the whole line, or
+ * is followed by a separator / closing emphasis / `by` / `as`.
+ */
+const SUPERSEDED_WORD_MARKERS = [
+  'superseded',
+  'deprecated',
+  'reframed',
+  'retired',
+  'obsolete',
+  'do not use',
+];
+
+/**
+ * Every status marker F9 recognises (SPEC §4.9), the union of the phrase and
+ * word groups above. `archived` is deliberately omitted: it overlaps the
+ * `archives/` guard and a self-labelled "archived" file in a live home is the
+ * very thing F9 reports, so matching the word would muddy the message.
+ */
+export const SUPERSEDED_MARKERS: readonly string[] = [
+  ...SUPERSEDED_WORD_MARKERS,
+  ...SUPERSEDED_PHRASE_MARKERS,
+];
+
+/** Leading blockquote / emphasis / heading / bracket punctuation to strip. */
+const BANNER_PUNCTUATION = /^[\s>*_#`(]+/;
+
+/** A self-complete phrase marker at line start. */
+const PHRASE_BANNER = new RegExp(`^(?:${SUPERSEDED_PHRASE_MARKERS.join('|')})\\b`);
+
+/**
+ * A single-word marker at line start that is label-shaped: it ends the line, or
+ * is followed by a separator (`:.,;!?`, a closing bracket), a closing emphasis
+ * mark (`*_~` or a backtick, directly attached), or ` by`/` as`. Prose that
+ * merely opens with the word and continues into a sentence does not match.
+ */
+const WORD_BANNER = new RegExp(
+  '^(?:' +
+    SUPERSEDED_WORD_MARKERS.join('|') +
+    ')(?=$|\\s*[:.,;!?)\\]]|[*_`~]|\\s+(?:by|as)\\b)',
+);
+
+/** A `status:` line whose value is a dead-status marker. */
+const STATUS_BANNER = /^status\s*:\s*(?:superseded|deprecated|retired)\b/;
+
+/**
+ * True when a line is a banner: after stripping leading blockquote/emphasis/
+ * heading/bracket punctuation, lowercasing, and collapsing whitespace, it begins
+ * with a status marker (SPEC §4.9). Line-start matching keeps a mid-line mention
+ * ("the v1 pipeline was deprecated") from tripping; the label-shape requirement
+ * on single-word markers further keeps a live opener ("# Deprecated features")
+ * from tripping, while bare/labelled banners ("Deprecated.", "Superseded by X")
+ * still match.
+ */
+function isBannerLine(line: string): boolean {
+  const text = line.replace(BANNER_PUNCTUATION, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return PHRASE_BANNER.test(text) || WORD_BANNER.test(text) || STATUS_BANNER.test(text);
+}
+
+/**
+ * True when a file carries a superseded/deprecated banner in its top region
+ * (F9, SPEC §4.9): the preamble plus the first heading section, capped at
+ * `scanLines` lines. Scoped to the top so a deprecation mentioned deep in the
+ * body, or a `## Deprecated changes` heading in a later section, does not trip
+ * it; matched at line start so a mid-line mention does not either. Fenced code
+ * is stripped first (as for F8, §4.8), so a marker word inside a code example
+ * does not count as a banner.
+ */
+export function hasSupersededBanner(content: string, scanLines: number): boolean {
+  const sections = splitSections(stripFencedCode(content));
+  // An empty preamble (a heading-first file) contributes no lines, not a
+  // phantom '' from `''.split('\n')`, so heading-first and prose-first files get
+  // the same `scanLines` budget.
+  const region: string[] = sections[0].body === '' ? [] : sections[0].body.split('\n');
+  if (sections.length > 1) {
+    const first = sections[1];
+    region.push(`${'#'.repeat(first.level)} ${first.heading}`, ...first.body.split('\n'));
+  }
+  return region.slice(0, scanLines).some(isBannerLine);
 }

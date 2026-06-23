@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readWorkspace } from '../src/workspace.js';
+import { proseBlocks } from '../src/parse.js';
 
 /**
  * The workspace reader walks a directory into the shape the audit runner
@@ -66,5 +69,50 @@ describe('readWorkspace(): binary sniff and ignore (#14)', () => {
     expect(pruned.tree.some((p) => p.startsWith('memory/'))).toBe(false);
     // `.memory` is a different name and is not ignored.
     expect(pruned.tree.some((p) => p.startsWith('.memory/'))).toBe(true);
+  });
+});
+
+describe('readWorkspace(): CRLF normalization (folded F8-review residual)', () => {
+  // A committed CRLF fixture is fragile (git autocrlf may rewrite it), so write
+  // one at runtime and read it through the production path.
+  it('normalizes CRLF to LF, so a # inside a CRLF fence is still stripped', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'icm-crlf-'));
+    try {
+      writeFileSync(join(dir, 'CLAUDE.md'), '# Root\n');
+      mkdirSync(join(dir, 'references'));
+      const crlf = [
+        '# Title',
+        'real prose alpha here.',
+        '```sh',
+        '# not a heading, just a shell comment',
+        'leaked fenced code line',
+        '```',
+        'real prose beta here.',
+      ].join('\r\n');
+      writeFileSync(join(dir, 'references', 'doc.md'), crlf);
+
+      const ws = readWorkspace(dir);
+      const doc = ws.files.find((f) => f.path === 'references/doc.md');
+      // Load-bearing assertions first: without normalization the trailing \r
+      // defeats the fence regex, the fence is not stripped, and the code leaks
+      // into the prose blocks. (The \r check below would short-circuit the test
+      // before these run, so it goes last.)
+      const words = proseBlocks(doc?.content ?? '').flat();
+      expect(words).not.toContain('leaked');
+      expect(words).not.toContain('code');
+      expect(words).toEqual([
+        'real',
+        'prose',
+        'alpha',
+        'here',
+        'real',
+        'prose',
+        'beta',
+        'here',
+      ]);
+      expect(doc?.content.includes('\r')).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

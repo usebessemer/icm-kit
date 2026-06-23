@@ -2,8 +2,8 @@
  * The audit runner (SPEC §3, §4).
  *
  * `audit` walks a read workspace, classifies every file (§2.5), and evaluates
- * the well-formedness rules (W1 to W7) and failure modes (F1 to F6, plus F8)
- * from the rule model, returning a sorted list of findings. Every finding
+ * the well-formedness rules (W1 to W7) and failure modes (F1 to F6, plus F8 and
+ * F9) from the rule model, returning a sorted list of findings. Every finding
  * carries a stable rule code; failure modes that enforce a well-formedness rule
  * also carry the `relatedRule` they back (e.g. HIDDEN_CONTEXT enforces W5).
  *
@@ -33,6 +33,10 @@
  *   prose is expected rather than drift. Beyond the candidate set, two work
  *   products are not flagged against each other (templated deliverables share
  *   structure by design), but a work product duplicating durable content is.
+ * - F9 SUPERSEDED_BUT_LIVE is per-file: a live-routed Markdown file (classified,
+ *   not under `archives/`) whose top region opens with a superseded/deprecated
+ *   banner (SPEC §4.9). It backs W5 from the opposite side of F2: F2 routes a
+ *   hidden file in, F9 routes a self-marked-dead file out.
  */
 
 import { classify } from './classify.js';
@@ -45,12 +49,13 @@ import {
   WELL_FORMEDNESS_RULES,
 } from './model.js';
 import type { Classification, Finding, Severity, Thresholds } from './model.js';
-import { baseName, dirOf, isMarkdown, routingDepth } from './paths.js';
+import { baseName, dirOf, isMarkdown, isUnderArchive, routingDepth } from './paths.js';
 import {
   extractLoadSkipReferences,
   findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
+  hasSupersededBanner,
   isIdentityHeading,
   parseStageContract,
   splitSections,
@@ -73,7 +78,7 @@ export interface AuditOptions {
   readonly countTokens?: TokenCounter;
 }
 
-/** Audit a read workspace against W1 to W7 and F1 to F6, plus F8 (SPEC §3, §4). */
+/** Audit a read workspace against W1 to W7 and F1 to F6, plus F8 and F9 (SPEC §3, §4). */
 export function audit(workspace: Workspace, options: AuditOptions = {}): Finding[] {
   const thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
   const countTokens = options.countTokens ?? DEFAULT_TOKEN_COUNTER;
@@ -96,6 +101,7 @@ export function audit(workspace: Workspace, options: AuditOptions = {}): Finding
     checkOverRouting(file.path, tree, thresholds, findings);
     checkMonolithicSize(file, countTokens, thresholds, findings);
     checkContentSegregation(file, c, findings);
+    checkSupersededBanner(file, c, thresholds, findings);
     checkStageContract(file, c, findings);
   }
 
@@ -236,6 +242,36 @@ function checkContentSegregation(
       relatedRule: W.W3,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Superseded-but-live (F9 / W5)
+// ---------------------------------------------------------------------------
+
+/**
+ * F9 SUPERSEDED_BUT_LIVE (SPEC §4.9): a file carrying a superseded/deprecated
+ * banner near its top that is still classified into a live (non-archive) home,
+ * so the agent still reads it as current. The inverse of HIDDEN_CONTEXT (F2): F2
+ * is an unreachable file that should be routed, F9 is a reachable file the author
+ * marked dead that should be un-routed; both back W5. An unclassified banner file
+ * is F2's job (never read), and a file already under `archives/` is correctly
+ * retired, so both are skipped.
+ */
+function checkSupersededBanner(
+  file: WorkspaceFile,
+  c: Classification,
+  thresholds: Thresholds,
+  findings: Finding[],
+): void {
+  if (!isMarkdown(file.path) || c.unclassified || isUnderArchive(file.path)) return;
+  if (!hasSupersededBanner(file.content, thresholds.supersededBannerScanLines)) return;
+  findings.push({
+    rule: F.F9,
+    severity: WARNING,
+    path: file.path,
+    message: `Carries a superseded banner but is still routed as live ${c.contentType}: move it to archives/ (F9 SUPERSEDED_BUT_LIVE).`,
+    relatedRule: W.W5,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -433,7 +469,7 @@ function isDuplicationCandidate(file: WorkspaceFile, c: Classification): boolean
   if (!file.isText || c.unclassified) return false;
   if (pathUnderHome(file.path, CANONICAL_HOMES.memory)) return false;
   if (pathUnderHome(file.path, CANONICAL_HOMES.skill)) return false;
-  if (pathUnderHome(file.path, 'archives')) return false;
+  if (isUnderArchive(file.path)) return false;
   if (c.contentType === 'working' && c.routingLevel === 'L2') return false;
   return true;
 }
