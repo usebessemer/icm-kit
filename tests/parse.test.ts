@@ -449,4 +449,34 @@ describe('hasSupersededBanner (F9 top-region banner, §4.9)', () => {
     );
     expect(hasSupersededBanner(real, scan)).toBe(true);
   });
+
+  it('fires on a label-shaped single-word marker but not when it opens prose', () => {
+    // Label-shaped: end of line, separator, closing emphasis, or by/as.
+    for (const banner of [
+      'Deprecated.',
+      'Obsolete!',
+      '(Deprecated)',
+      'Retired.',
+      'Superseded by build-c.md',
+      'Reframed as the W5 lens',
+      '**Deprecated**',
+    ]) {
+      expect(hasSupersededBanner(banner, scan)).toBe(true);
+    }
+    // Live prose / section titles that merely open with a marker word: not banners.
+    for (const prose of [
+      '# Deprecated features',
+      'Do not use tabs; use spaces.',
+      'Deprecated APIs are documented below.',
+      'Obsolete-stock report for Q3',
+      'Reframed the problem as a graph search.',
+    ]) {
+      expect(hasSupersededBanner(prose, scan)).toBe(false);
+    }
+  });
+
+  it('keeps phrase markers firing bare, before a trailing target path', () => {
+    expect(hasSupersededBanner('Replaced by build-c.md', scan)).toBe(true);
+    expect(hasSupersededBanner('No longer current; see upstream.', scan)).toBe(true);
+  });
 });

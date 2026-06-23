@@ -523,6 +523,18 @@ describe('audit(): F9 SUPERSEDED_BUT_LIVE (§4.9)', () => {
     );
     expect(rule(findings, 'SUPERSEDED_BUT_LIVE')).toHaveLength(0);
   });
+
+  it('fires on a label-shaped banner but not a live doc that opens with a marker word', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity',
+        'references/dead.md': 'Deprecated.\n\nOld notes, kept live by mistake.',
+        'references/deprecated-features.md':
+          '# Deprecated features\n\nA live reference that documents APIs scheduled for removal.',
+      }),
+    );
+    expect(paths(findings, 'SUPERSEDED_BUT_LIVE')).toEqual(['references/dead.md']);
+  });
 });
 
 describe('audit(): work-folder declaration', () => {

@@ -93,9 +93,10 @@ describe('readWorkspace(): CRLF normalization (folded F8-review residual)', () =
 
       const ws = readWorkspace(dir);
       const doc = ws.files.find((f) => f.path === 'references/doc.md');
-      expect(doc?.content.includes('\r')).toBe(false);
-      // Without normalization the trailing \r defeats the fence regex, the fence
-      // is not stripped, and the code leaks into the prose blocks.
+      // Load-bearing assertions first: without normalization the trailing \r
+      // defeats the fence regex, the fence is not stripped, and the code leaks
+      // into the prose blocks. (The \r check below would short-circuit the test
+      // before these run, so it goes last.)
       const words = proseBlocks(doc?.content ?? '').flat();
       expect(words).not.toContain('leaked');
       expect(words).not.toContain('code');
@@ -109,6 +110,7 @@ describe('readWorkspace(): CRLF normalization (folded F8-review residual)', () =
         'beta',
         'here',
       ]);
+      expect(doc?.content.includes('\r')).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

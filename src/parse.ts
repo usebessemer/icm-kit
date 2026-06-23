@@ -549,38 +549,71 @@ function blocksOverlap(
 // ---------------------------------------------------------------------------
 
 /**
- * Status markers that, at the start of a top-region line, signal a "this file is
- * dead" banner (F9, SPEC §4.9). `superseded` also covers `superseded by`;
- * `status:` markers are matched separately (see `isBannerLine`) to tolerate
- * spacing. `archived` is deliberately omitted: it overlaps the archive guard and
- * a self-labelled "archived" file in a live home is the very thing F9 reports, so
- * matching the word would muddy the message rather than help.
+ * Phrase markers that are self-complete: a top-region line opening with one is a
+ * banner even bare, because the phrase typically precedes a target path
+ * (`Replaced by build-c.md`). Matched with `startsWith` (a trailing `\b`).
  */
-export const SUPERSEDED_MARKERS: readonly string[] = [
+const SUPERSEDED_PHRASE_MARKERS = ['replaced by', 'no longer current'];
+
+/**
+ * Single-word markers that also occur as ordinary prose openers (`# Deprecated
+ * features`, `Do not use tabs`). To avoid that false-positive class they fire
+ * only when *label-shaped* (see `WORD_BANNER`): the marker is the whole line, or
+ * is followed by a separator / closing emphasis / `by` / `as`.
+ */
+const SUPERSEDED_WORD_MARKERS = [
   'superseded',
   'deprecated',
   'reframed',
-  'replaced by',
   'retired',
   'obsolete',
   'do not use',
-  'no longer current',
 ];
 
-/** Leading Markdown emphasis / blockquote / heading punctuation to strip. */
-const BANNER_PUNCTUATION = /^[\s>*_#`]+/;
+/**
+ * Every status marker F9 recognises (SPEC §4.9), the union of the phrase and
+ * word groups above. `archived` is deliberately omitted: it overlaps the
+ * `archives/` guard and a self-labelled "archived" file in a live home is the
+ * very thing F9 reports, so matching the word would muddy the message.
+ */
+export const SUPERSEDED_MARKERS: readonly string[] = [
+  ...SUPERSEDED_WORD_MARKERS,
+  ...SUPERSEDED_PHRASE_MARKERS,
+];
+
+/** Leading blockquote / emphasis / heading / bracket punctuation to strip. */
+const BANNER_PUNCTUATION = /^[\s>*_#`(]+/;
+
+/** A self-complete phrase marker at line start. */
+const PHRASE_BANNER = new RegExp(`^(?:${SUPERSEDED_PHRASE_MARKERS.join('|')})\\b`);
+
+/**
+ * A single-word marker at line start that is label-shaped: it ends the line, or
+ * is followed by a separator (`:.,;!?`, a closing bracket), a closing emphasis
+ * mark (`*_~` or a backtick, directly attached), or ` by`/` as`. Prose that
+ * merely opens with the word and continues into a sentence does not match.
+ */
+const WORD_BANNER = new RegExp(
+  '^(?:' +
+    SUPERSEDED_WORD_MARKERS.join('|') +
+    ')(?=$|\\s*[:.,;!?)\\]]|[*_`~]|\\s+(?:by|as)\\b)',
+);
+
+/** A `status:` line whose value is a dead-status marker. */
+const STATUS_BANNER = /^status\s*:\s*(?:superseded|deprecated|retired)\b/;
 
 /**
  * True when a line is a banner: after stripping leading blockquote/emphasis/
- * heading punctuation and lowercasing, it *begins* with a status marker (SPEC
- * §4.9). Line-start matching, not anywhere-in-line, is what keeps "the v1
- * pipeline was deprecated" (prose) from tripping while "Deprecated: replaced by
- * build-c.md" (a banner) matches: the analogue of scoping F3 to table rows.
+ * heading/bracket punctuation, lowercasing, and collapsing whitespace, it begins
+ * with a status marker (SPEC §4.9). Line-start matching keeps a mid-line mention
+ * ("the v1 pipeline was deprecated") from tripping; the label-shape requirement
+ * on single-word markers further keeps a live opener ("# Deprecated features")
+ * from tripping, while bare/labelled banners ("Deprecated.", "Superseded by X")
+ * still match.
  */
 function isBannerLine(line: string): boolean {
   const text = line.replace(BANNER_PUNCTUATION, '').trim().toLowerCase().replace(/\s+/g, ' ');
-  if (SUPERSEDED_MARKERS.some((marker) => text.startsWith(marker))) return true;
-  return /^status\s*:\s*(superseded|deprecated|retired)\b/.test(text);
+  return PHRASE_BANNER.test(text) || WORD_BANNER.test(text) || STATUS_BANNER.test(text);
 }
 
 /**
