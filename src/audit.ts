@@ -379,7 +379,10 @@ function checkStaleContent(
 ): void {
   const root = dirOf(claudePath);
   // Dedup per stale token: a pointer repeated across N load/skip cells is one
-  // stale reference, so it earns one finding, not N (SPEC §4.3).
+  // stale reference, so it earns one finding, not N (SPEC §4.3). The key is the
+  // literal token, not the resolved path: two cells naming the same bare
+  // basename (e.g. `_template.md`) intentionally merge, since the message is
+  // token-only and the two findings would otherwise be indistinguishable.
   const seen = new Set<string>();
   for (const ref of extractLoadSkipReferences(content)) {
     if (ref.structural) continue; // a per-folder convention placeholder
