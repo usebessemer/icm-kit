@@ -493,4 +493,34 @@ describe('hasSupersededBanner (F9 top-region banner, §4.9)', () => {
     expect(hasSupersededBanner('Replaced by build-c.md', scan)).toBe(true);
     expect(hasSupersededBanner('No longer current; see upstream.', scan)).toBe(true);
   });
+
+  it('fires on a marker immediately followed by an ISO date (the real banner shape, #28)', () => {
+    // pain.md: marker + date + `by`. The date precedes the separator, so the
+    // pre-#28 label-shape guard (which expected a separator or `by`/`as`
+    // directly after the marker) missed it.
+    expect(
+      hasSupersededBanner(
+        '# Pain — hypothesis\n\n> **SUPERSEDED 2026-06-01 by the discovery call.** Confirmed pain lives elsewhere.',
+        scan,
+      ),
+    ).toBe(true);
+    // build-b-aios.md: a warning emoji precedes the marker, and the date is
+    // followed by `(see ...)`, never `by`/`as`: caught by the emoji strip plus
+    // the date label-shape, not by the `by`/`as` path.
+    expect(
+      hasSupersededBanner(
+        '# Build B\n\n> **Distinct from Build A** (...)\n>\n> **⚠️ REFRAMED 2026-06-03 (see [decisions/log.md](x)).** The standalone-platform framing is superseded.',
+        scan,
+      ),
+    ).toBe(true);
+    // The bare date shape, with and without an emoji prefix.
+    expect(hasSupersededBanner('Superseded 2026-06-01.', scan)).toBe(true);
+    expect(hasSupersededBanner('⚠️ Deprecated 2025-01-01 — see v2.', scan)).toBe(true);
+  });
+
+  it('does not treat a marker followed by a non-date token as a dated banner', () => {
+    // Only a full ISO date is announcement-shaped; a bare year or a word is not.
+    expect(hasSupersededBanner('Deprecated 2024 roadmap notes', scan)).toBe(false);
+    expect(hasSupersededBanner('Obsolete inventory list for the warehouse', scan)).toBe(false);
+  });
 });

@@ -856,8 +856,14 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
     );
   });
 
-  it('F9 / W5: the one live-routed file carrying a superseded banner', () => {
+  it('F9 / W5: every live-routed file carrying a superseded banner, real shapes included (#28)', () => {
+    // The synthetic `> Superseded: replaced by ...` shape plus the two real
+    // AIOS dogfood shapes the rule was derived from but under-caught: a marker
+    // trailed by an ISO date (`SUPERSEDED 2026-06-01 by ...`) and a warning
+    // emoji ahead of the marker (`> **⚠️ REFRAMED 2026-06-03 ...`).
     expect(paths(findings, 'SUPERSEDED_BUT_LIVE')).toEqual([
+      'references/build-b-aios.md',
+      'references/pain.md',
       'references/superseded-routing.md',
     ]);
     expect(
@@ -866,6 +872,6 @@ describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
   });
 
   it('produces exactly the expected findings', () => {
-    expect(findings).toHaveLength(15);
+    expect(findings).toHaveLength(17);
   });
 });
