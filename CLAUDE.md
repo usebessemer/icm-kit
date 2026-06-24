@@ -9,7 +9,7 @@ A CLI with two commands sharing a single ICM rule model:
 - `init`: scaffold a new ICM-compliant workspace.
 - `audit`: check an existing workspace against the rule model and report violations.
 
-The rule model encodes the paper's classification (routing level, content type, load pattern), well-formedness rules (`W1` to `W7`), and failure modes (`F1` to `F6` plus `F8` and `F9`; `F7` is reserved and in flight, so the codes are briefly non-contiguous) in a single language-agnostic spec that both commands consume.
+The rule model encodes the paper's classification (routing level, content type, load pattern), well-formedness rules (`W1` to `W7`), and failure modes (`F1` to `F9`, contiguous) in a single language-agnostic spec that both commands consume.
 
 ## Source of truth
 

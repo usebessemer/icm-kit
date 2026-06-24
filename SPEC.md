@@ -1,4 +1,4 @@
-# ICM Spec: v0.7
+# ICM Spec: v0.8
 
 This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the two tools in `icm-kit`: `init`, which generates structures that satisfy the spec, and `audit`, which checks structures against it.
 
@@ -139,7 +139,7 @@ A workspace is **ICM-compliant** if and only if all the following hold. Each rul
 
 ## 4. Failure modes
 
-Each failure mode is a lint rule, carrying a stable code (`F1` through `F6` plus `F8` and `F9`, in section order 4.1 through 4.6 and 4.8 and 4.9) that the rule model and audit output use as its identifier. The first five (`F1` to `F5`) are derived directly from the paper's Failure Modes section. The sixth (`F6`, `MALFORMED_STAGE_CONTRACT`), `F8` (`DUPLICATION`, §4.8), and `F9` (`SUPERSEDED_BUT_LIVE`, §4.9) are original to icm-kit and have no counterpart in the paper; `F6` enforces the stage-contract shape required by W7 (§3). `F7` (`KIT_BOILERPLATE`) is reserved and in flight: its §4.7 entry lands with the git-history rule, so until then the failure-mode codes are non-contiguous and §4 shows 4.8 and 4.9 before a 4.7 exists. Severity in v0.1 is `warning` for all rules; an `error` severity is reserved for later.
+Each failure mode is a lint rule, carrying a stable code (`F1` through `F9`, in section order 4.1 through 4.9) that the rule model and audit output use as its identifier. The first five (`F1` to `F5`) are derived directly from the paper's Failure Modes section. The remaining four are original to icm-kit and have no counterpart in the paper: `F6` (`MALFORMED_STAGE_CONTRACT`, §4.6) enforces the stage-contract shape required by W7 (§3); `F7` (`KIT_BOILERPLATE`, §4.7) is the first rule to consult git history, flagging a file inherited from the workspace's fork point and never adapted since; `F8` (`DUPLICATION`, §4.8) and `F9` (`SUPERSEDED_BUT_LIVE`, §4.9) are a whole-workspace and a per-file content check respectively. Each code is bound to its rule by name and section order, never by merge order, so the codes are contiguous. Severity in v0.1 is `warning` for all rules; an `error` severity is reserved for later.
 
 ### 4.1 `MONOLITHIC_CONTEXT`
 
@@ -199,6 +199,14 @@ A stage contract `CONTEXT.md` missing one or more of the required IPO + C sectio
 
 **Severity:** warning.
 
+### 4.7 `KIT_BOILERPLATE`
+
+A file inherited from the workspace's fork or import point and never adapted since: its git history shows no commit after the configured fork-point commit, so its content is upstream boilerplate the workspace never made its own.
+
+**Detection (v0.8):** Requires git history (the first rule to use it; the broader time-based `STALE_CONTENT` heuristics of §4.3 stay deferred). A configurable fork-point commit identifies the boundary (default: the repository's root commit; overridable via `--fork-point <ref>`). A tracked file is flagged when it existed at the fork-point commit and no commit after it has touched its path. Scoped to classified, routable text files: `CLAUDE.md` is exempt (identity starts from a template; F1/F5/W-rules govern it), binaries and unreadable files are exempt (§4.1), unrouted files are reported as Hidden context (§4.2) not boilerplate, and the harness and work homes where "untouched since the fork" is the expected state, not a defect, are exempt even when routed: the always-loaded `.memory/` store and numbered-stage work files (§2.5), alongside retired `archives/` content. Auto-discovered skills are not exempt: an un-adapted kit skill is exactly the boilerplate this rule targets. A workspace not under git, or a shallow clone lacking the fork-point commit, produces no findings; a wrong or missing fork-point degrades to under-reporting, never to spurious findings.
+
+**Severity:** warning.
+
 ### 4.8 `DUPLICATION`
 
 The same substantive prose lives in two separately-routed homes (e.g. root identity restating a `context/` or `references/` file; a scope-discipline file restating an engagement-scope file).
@@ -222,7 +230,7 @@ A file carrying a "superseded / deprecated / reframed" banner near its top that 
 Explicitly deferred to later versions:
 
 - **Vendor parity** beyond `CLAUDE.md`. `AGENTS.md` and other vendor variants are conceptually the same role but are not recognised by the v0.1 classifier.
-- **Time-based stale-content heuristics.** File age and git activity as signals for `STALE_CONTENT` are deferred to v0.2.
+- **Time-based stale-content heuristics.** File-age and last-modified-vs-activity signals for `STALE_CONTENT` (§4.3) remain deferred. Git *ancestry* is now partly consumed: `KIT_BOILERPLATE` (§4.7) reads commit reachability from a fork-point commit to detect never-adapted files. File *age* itself, and last-modified timestamps, are still not signals.
 - **Task-type taxonomy.** Load/skip table task identifiers are parsed as opaque strings; no external vocabulary is validated.
 - **Load/skip-table type-precedence.** v0.1 treats an explicit load/skip mention as a routability fallback (it rescues otherwise-unclassified files; §2.5). Reclassifying a canonical-home file through an explicit per-file load rule (full type-precedence) needs a pinned table format and is deferred to v0.2.
 - **Severity tiers beyond warning.** No `error` severity in v0.1; everything is advisory.
@@ -233,7 +241,7 @@ Explicitly deferred to later versions:
 
 ## 6. Versioning
 
-This is **SPEC v0.7**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence; v0.5 resolves F3 pointers within the load/skip cell, so a bare name qualifies against a same-cell directory token and a bare structural basename (`CONTEXT.md`, `CLAUDE.md`) is a placeholder, not a dangling pointer (§4.3); v0.6 adds the `DUPLICATION` failure mode (`F8`, §4.8), a whole-workspace check that flags the same substantive prose living in two separately-routed homes; v0.7 adds the `SUPERSEDED_BUT_LIVE` failure mode (`F9`, §4.9), a per-file check that flags a file still routed into a live home despite a superseded/deprecated banner near its top, and newline-normalizes input on read (CRLF to LF) so the §4.8 fence and heading scans are robust to Windows line endings (`F7` `KIT_BOILERPLATE` remains reserved and in flight, so the failure-mode codes stay non-contiguous until it lands). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+This is **SPEC v0.8**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence; v0.5 resolves F3 pointers within the load/skip cell, so a bare name qualifies against a same-cell directory token and a bare structural basename (`CONTEXT.md`, `CLAUDE.md`) is a placeholder, not a dangling pointer (§4.3); v0.6 adds the `DUPLICATION` failure mode (`F8`, §4.8), a whole-workspace check that flags the same substantive prose living in two separately-routed homes; v0.7 adds the `SUPERSEDED_BUT_LIVE` failure mode (`F9`, §4.9), a per-file check that flags a file still routed into a live home despite a superseded/deprecated banner near its top, and newline-normalizes input on read (CRLF to LF) so the §4.8 fence and heading scans are robust to Windows line endings; v0.8 adds the `KIT_BOILERPLATE` failure mode (`F7`, §4.7), the first rule to consult git history (it flags a file inherited from the workspace's fork-point commit and never adapted since), filling the previously reserved 4.7 slot so the failure-mode codes are now contiguous `F1` through `F9`. The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
 
 ---
 

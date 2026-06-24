@@ -1,7 +1,7 @@
 /**
  * The ICM rule model.
  *
- * This module is the TypeScript encoding of SPEC.md (SPEC v0.7). It is the
+ * This module is the TypeScript encoding of SPEC.md (SPEC v0.8). It is the
  * single source both `init` and `audit` consume: the classification axes
  * (SPEC §2.2 to §2.4), the classification result shape (§2.5), the
  * well-formedness rules (§3), and the failure modes (§4).
@@ -139,10 +139,9 @@ export type Severity = (typeof SEVERITIES)[number];
 /**
  * Stable identifiers for the failure-mode lint rules (SPEC §4).
  *
- * `F7` (`KIT_BOILERPLATE`) is reserved and in flight: it lands with the
- * git-history rule, so until then the codes are non-contiguous (`F8` and `F9`
- * exist before `F7` does). Each code is bound to its rule by name, never by
- * position (SPEC §4 intro), so this gap is benign.
+ * The codes are contiguous `F1` through `F9`, in section order (SPEC §4 intro).
+ * `F7` (`KIT_BOILERPLATE`) is the first rule to consult git history. Each code
+ * is bound to its rule by name, never by position.
  */
 export const FAILURE_MODES = {
   F1: 'MONOLITHIC_CONTEXT',
@@ -151,6 +150,7 @@ export const FAILURE_MODES = {
   F4: 'OVER_ROUTING',
   F5: 'LAYER_BLOAT',
   F6: 'MALFORMED_STAGE_CONTRACT',
+  F7: 'KIT_BOILERPLATE',
   F8: 'DUPLICATION',
   F9: 'SUPERSEDED_BUT_LIVE',
 } as const;

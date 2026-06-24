@@ -2,10 +2,10 @@
  * The audit runner (SPEC §3, §4).
  *
  * `audit` walks a read workspace, classifies every file (§2.5), and evaluates
- * the well-formedness rules (W1 to W7) and failure modes (F1 to F6, plus F8 and
- * F9) from the rule model, returning a sorted list of findings. Every finding
- * carries a stable rule code; failure modes that enforce a well-formedness rule
- * also carry the `relatedRule` they back (e.g. HIDDEN_CONTEXT enforces W5).
+ * the well-formedness rules (W1 to W7) and failure modes (F1 to F9) from the
+ * rule model, returning a sorted list of findings. Every finding carries a
+ * stable rule code; failure modes that enforce a well-formedness rule also carry
+ * the `relatedRule` they back (e.g. HIDDEN_CONTEXT enforces W5).
  *
  * v0.1 scope notes (each surfaced in the PR, none silently absorbed):
  * - W4 NESTED_INTEGRITY is implemented by running W1 to W3 across every
@@ -37,6 +37,13 @@
  *   not under `archives/`) whose top region opens with a superseded/deprecated
  *   banner (SPEC §4.9). It backs W5 from the opposite side of F2: F2 routes a
  *   hidden file in, F9 routes a self-marked-dead file out.
+ * - F7 KIT_BOILERPLATE is per-file and the first rule to read git history: a
+ *   tracked, routed text file that existed at the fork-point commit and that no
+ *   commit since has touched is upstream boilerplate the workspace never adapted
+ *   (SPEC §4.7). Git facts ride on `WorkspaceFile` (one seam, set by
+ *   `readWorkspace`); the harness/work homes where "untouched since fork" is
+ *   expected (`.memory/`, numbered-stage work files, `archives/`) are exempt, as
+ *   is CLAUDE.md. Off-repo the facts default to untracked, so F7 stays silent.
  */
 
 import { classify } from './classify.js';
@@ -78,7 +85,7 @@ export interface AuditOptions {
   readonly countTokens?: TokenCounter;
 }
 
-/** Audit a read workspace against W1 to W7 and F1 to F6, plus F8 and F9 (SPEC §3, §4). */
+/** Audit a read workspace against W1 to W7 and F1 to F9 (SPEC §3, §4). */
 export function audit(workspace: Workspace, options: AuditOptions = {}): Finding[] {
   const thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
   const countTokens = options.countTokens ?? DEFAULT_TOKEN_COUNTER;
@@ -103,6 +110,7 @@ export function audit(workspace: Workspace, options: AuditOptions = {}): Finding
     checkContentSegregation(file, c, findings);
     checkSupersededBanner(file, c, thresholds, findings);
     checkStageContract(file, c, findings);
+    checkKitBoilerplate(file, c, findings);
   }
 
   for (const [claudePath, content] of claudeMd) {
@@ -302,6 +310,57 @@ function checkStageContract(
 }
 
 // ---------------------------------------------------------------------------
+// Kit boilerplate (F7)
+// ---------------------------------------------------------------------------
+
+/**
+ * F7 KIT_BOILERPLATE (SPEC §4.7): a file inherited from the workspace's fork or
+ * import point and never adapted since. The fire condition reads the git facts
+ * `readWorkspace` attached to the file (`tracked`, `existedAtForkPoint`,
+ * `postForkCommits === 0`): present at the fork point, untouched after it.
+ *
+ * Scoped to classified, routable text files. Exemptions: CLAUDE.md (identity
+ * starts from a template; other rules govern it); binaries (no meaningful
+ * content to adapt); unrouted files (F2's concern, not boilerplate); and the
+ * harness/work homes where "untouched since fork" is the expected state, not a
+ * defect: the always-loaded `.memory/` store, numbered-stage work files, and
+ * retired `archives/`. Auto-discovered skills are deliberately not exempt: an
+ * un-adapted kit skill is exactly what this rule targets. Off-repo the git facts
+ * default to untracked, so the rule is silent (no relatedRule).
+ */
+function checkKitBoilerplate(
+  file: WorkspaceFile,
+  c: Classification,
+  findings: Finding[],
+): void {
+  if (!file.isText) return;
+  if (baseName(file.path) === ROOT_IDENTITY_FILE) return;
+  if (c.unclassified) return;
+  if (pathUnderHome(file.path, CANONICAL_HOMES.memory)) return;
+  if (isStageScratch(c)) return;
+  if (isUnderArchive(file.path)) return;
+  if (!file.tracked || !file.existedAtForkPoint || file.postForkCommits !== 0) {
+    return;
+  }
+  findings.push({
+    rule: F.F7,
+    severity: WARNING,
+    path: file.path,
+    message:
+      'Inherited from the fork point and never adapted since (no commit after the fork point has touched it): adapt it to this workspace or move it to archives/ (F7 KIT_BOILERPLATE).',
+  });
+}
+
+/**
+ * True for an L2 numbered-stage work file: transient per-task scratch (SPEC §2.5,
+ * §4.7/§4.8). Shared by KIT_BOILERPLATE and the DUPLICATION candidate guard so
+ * the two cannot drift on what a stage-scratch file is.
+ */
+function isStageScratch(c: Classification): boolean {
+  return c.contentType === 'working' && c.routingLevel === 'L2';
+}
+
+// ---------------------------------------------------------------------------
 // Stale content (F3) and layer bloat (F5)
 // ---------------------------------------------------------------------------
 
@@ -470,7 +529,7 @@ function isDuplicationCandidate(file: WorkspaceFile, c: Classification): boolean
   if (pathUnderHome(file.path, CANONICAL_HOMES.memory)) return false;
   if (pathUnderHome(file.path, CANONICAL_HOMES.skill)) return false;
   if (isUnderArchive(file.path)) return false;
-  if (c.contentType === 'working' && c.routingLevel === 'L2') return false;
+  if (isStageScratch(c)) return false;
   return true;
 }
 

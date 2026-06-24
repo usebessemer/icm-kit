@@ -11,15 +11,15 @@ ICM is described in [*Context as Architecture*](https://github.com/usebessemer/r
 
 icm-kit is the applied counterpart: a tool that operationalizes the paper's classification and failure modes.
 
-## Status: v0.7
+## Status: v0.8
 
-`audit` is implemented and hardened: the §2.5 file classifier and the W1-W7 / F1-F6 rule set, run end-to-end and validated against a real production workspace (the dry run against it drove the v0.2 to v0.5 hardening and surfaced the fork rules now landing as v0.6+). v0.6 adds `F8` DUPLICATION, a whole-workspace check for the same prose in two routed homes; v0.7 adds `F9` SUPERSEDED_BUT_LIVE, flagging a live-routed file that opens with a superseded/deprecated banner; `F7` KIT_BOILERPLATE lands next (reserved, so the codes are briefly non-contiguous). `init` follows. Typing agent *roles*, not just files (per the [agent-role topology](https://github.com/usebessemer/research/blob/main/theory/agent-role-topology.md)), is a forthcoming SPEC extension.
+`audit` is implemented and hardened: the §2.5 file classifier and the W1-W7 / F1-F9 rule set, run end-to-end and validated against a real production workspace (the dry run against it drove the v0.2 to v0.5 hardening and surfaced the fork rules landing as v0.6+). v0.6 adds `F8` DUPLICATION, a whole-workspace check for the same prose in two routed homes; v0.7 adds `F9` SUPERSEDED_BUT_LIVE, flagging a live-routed file that opens with a superseded/deprecated banner; v0.8 adds `F7` KIT_BOILERPLATE, the first git-history rule, flagging a file inherited from the workspace's fork point and never adapted since: with it the failure-mode codes are now contiguous `F1` through `F9`. `init` follows. Typing agent *roles*, not just files (per the [agent-role topology](https://github.com/usebessemer/research/blob/main/theory/agent-role-topology.md)), is a forthcoming SPEC extension.
 
-- [`SPEC.md`](SPEC.md): the formal model (v0.7), well-formedness rules, failure modes, and stage-contract requirements.
+- [`SPEC.md`](SPEC.md): the formal model (v0.8), well-formedness rules, failure modes, and stage-contract requirements.
 
 ## Roadmap
 
-- **v0.1 to v0.7** (shipped): the rule model, the §2.5 classifier, and `audit`, hardened against a real production workspace.
+- **v0.1 to v0.8** (shipped): the rule model, the §2.5 classifier, and `audit`, hardened against a real production workspace.
 - **next**: `init` (scaffold a compliant workspace), then the role-layer SPEC extension.
 - **1.0**: both `init` and `audit` shipping end-to-end against the spec, with a clean generated workspace auditing green.
 
