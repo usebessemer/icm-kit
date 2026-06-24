@@ -56,7 +56,14 @@ import {
   WELL_FORMEDNESS_RULES,
 } from './model.js';
 import type { Classification, Finding, Severity, Thresholds } from './model.js';
-import { baseName, dirOf, isMarkdown, isUnderArchive, routingDepth } from './paths.js';
+import {
+  baseName,
+  dirOf,
+  isMarkdown,
+  isUnderArchive,
+  normalizePosix,
+  routingDepth,
+} from './paths.js';
 import {
   extractLoadSkipReferences,
   findDuplicateProse,
@@ -371,9 +378,14 @@ function checkStaleContent(
   findings: Finding[],
 ): void {
   const root = dirOf(claudePath);
+  // Dedup per stale token: a pointer repeated across N load/skip cells is one
+  // stale reference, so it earns one finding, not N (SPEC §4.3).
+  const seen = new Set<string>();
   for (const ref of extractLoadSkipReferences(content)) {
     if (ref.structural) continue; // a per-folder convention placeholder
     if (resolveExisting(ref, root, treeSet) !== undefined) continue;
+    if (seen.has(ref.token)) continue;
+    seen.add(ref.token);
     findings.push({
       rule: F.F3,
       severity: WARNING,
@@ -385,7 +397,11 @@ function checkStaleContent(
 
 /**
  * The first candidate of `ref` that exists in the tree, tried as-is and
- * relative to the CLAUDE.md's workspace root; `undefined` if none resolve.
+ * relative to the containing CLAUDE.md's directory; `undefined` if none resolve.
+ * Each candidate is POSIX-normalized (collapsing `.`/`..`) before the membership
+ * test, so a relative pointer from a nested CLAUDE.md (`../../context/f.md`)
+ * resolves against the tree's normalized paths rather than failing on its
+ * literal `..` segments (SPEC §4.3). The resolved path is returned normalized.
  */
 function resolveExisting(
   ref: LoadSkipReference,
@@ -393,9 +409,11 @@ function resolveExisting(
   treeSet: Set<string>,
 ): string | undefined {
   for (const candidate of ref.candidates) {
-    if (treeSet.has(candidate)) return candidate;
-    if (root !== '' && treeSet.has(`${root}/${candidate}`)) {
-      return `${root}/${candidate}`;
+    const direct = normalizePosix(candidate);
+    if (treeSet.has(direct)) return direct;
+    if (root !== '') {
+      const joined = normalizePosix(`${root}/${candidate}`);
+      if (treeSet.has(joined)) return joined;
     }
   }
   return undefined;

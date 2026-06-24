@@ -13,7 +13,7 @@ import {
 } from '../src/model.js';
 
 /**
- * These tests pin the rule model to SPEC v0.8. They are a regression net for
+ * These tests pin the rule model to SPEC v0.9. They are a regression net for
  * the spec-driven discipline: a change here should mean a matching change in
  * SPEC.md landed in the same PR.
  */

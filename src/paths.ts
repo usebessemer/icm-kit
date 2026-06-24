@@ -22,6 +22,27 @@ export function baseName(path: string): string {
   return i === -1 ? path : path.slice(i + 1);
 }
 
+/**
+ * Collapse `.` and `..` segments in a POSIX-relative path. Pure string
+ * normalization, no filesystem access: a candidate joined from a nested
+ * CLAUDE.md's directory (`workspaces/x/../../context/f.md`) reduces to the
+ * normalized tree entry (`context/f.md`) so a membership test can match. A
+ * leading `..` that escapes the path root is preserved: such a path lies outside
+ * the workspace and so resolves to nothing in the tree (SPEC §4.3).
+ */
+export function normalizePosix(path: string): string {
+  const out: string[] = [];
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..' && out.length > 0 && out[out.length - 1] !== '..') {
+      out.pop();
+      continue;
+    }
+    out.push(segment);
+  }
+  return out.join('/');
+}
+
 /** True for a Markdown path (case-insensitive `.md`). */
 export function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith('.md');

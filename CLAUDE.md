@@ -61,3 +61,9 @@ You are a **dev leaf** in Stu's OSS stream: you author code here against the Git
 - **Surface, don't absorb** -> anything beyond an issue's acceptance criteria (a SPEC gap, an extra rule, a risky cleanup) is flagged on the issue or PR, not silently built or silently dropped.
 
 Conventions: branch `feature/* -> develop -> main`, one PR per issue, reviewed before merge. **No `Co-Authored-By: Claude` trailer** on any commit. Test-first. The spec wins on disagreement (see Development discipline above).
+
+## Dev-leaf task intake (you are a CodeExecutor leaf for this repo)
+On launch, find your task — do not wait for a pasted brief:
+1. `gh issue list --label dev-ready --state open` → work that issue (lowest number if several; if none, ask).
+2. `gh issue view <n>` → the body IS your spec, acceptance criteria, branch, and version target.
+3. Build per this repo's conventions (spec-driven; branch flow; no Claude trailer). Clarifications/progress on the PR/issue, never to the human. Open the PR, re-request the lead's review. The lead merges feature→develop once green — you never self-merge.
