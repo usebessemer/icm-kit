@@ -70,6 +70,7 @@ import {
   hasBehaviourBlock,
   hasLoadSkipTable,
   hasSupersededBanner,
+  isAppendOnlyLog,
   isIdentityHeading,
   parseStageContract,
   splitSections,
@@ -226,6 +227,12 @@ function checkMonolithicSize(
   // for a binary format (SPEC §4.1).
   if (!file.isText) return;
   const isClaudeMd = baseName(file.path) === ROOT_IDENTITY_FILE;
+  // An append-only log (a decisions log, an async channel) is an accreting
+  // ledger that grows by design; it is exempt from the size cap, since the
+  // remedy is a tail-archive of old entries, not a split (SPEC §4.1). The
+  // exemption never applies to a CLAUDE.md: the L0 identity cap holds even if
+  // the file happens to carry dated headings.
+  if (!isClaudeMd && isAppendOnlyLog(file.content)) return;
   const cap = isClaudeMd
     ? thresholds.claudeMdMaxTokens
     : thresholds.fileMaxTokens;

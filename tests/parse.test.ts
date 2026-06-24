@@ -7,6 +7,7 @@ import {
   hasBehaviourBlock,
   hasLoadSkipTable,
   hasSupersededBanner,
+  isAppendOnlyLog,
   isIdentityHeading,
   namedByClaudeMd,
   parseStageContract,
@@ -139,6 +140,79 @@ describe('hasBehaviourBlock (density-normalised, F1 soft / W3)', () => {
         2,
       );
     expect(hasBehaviourBlock(sparse)).toBe(false);
+  });
+});
+
+describe('isAppendOnlyLog (F1 append-only exemption, §4.1)', () => {
+  it('fires on a decisions-log shape (dated ## entries)', () => {
+    const log = [
+      '# Decisions Log',
+      '',
+      'Append-only record.',
+      '',
+      '## 2026-05-14 — a',
+      'x',
+      '## 2026-05-15 — b',
+      'y',
+      '## 2026-05-16 — c',
+      'z',
+    ].join('\n');
+    expect(isAppendOnlyLog(log)).toBe(true);
+  });
+
+  it('fires on an async-channel shape (dated ### entries)', () => {
+    const chan = [
+      '# Channel',
+      '### 2026-06-10 · A — x',
+      '### 2026-06-11 · B — y',
+      '### 2026-06-12 · C — z',
+    ].join('\n');
+    expect(isAppendOnlyLog(chan)).toBe(true);
+  });
+
+  it('does not count a literal YYYY-MM-DD template placeholder as a dated entry', () => {
+    const tmpl = '# Doc\n\n## YYYY-MM-DD — title\n\nFormat per entry, no real dates yet.';
+    expect(isAppendOnlyLog(tmpl)).toBe(false);
+  });
+
+  it('does not fire below the three-entry threshold or on ordinary prose', () => {
+    expect(isAppendOnlyLog('# Notes\n\n## 2026-01-01 kickoff\n\n## 2026-02-01 review')).toBe(
+      false,
+    );
+    expect(isAppendOnlyLog('# Guide\n\n## Setup\n\n## Usage\n\n## FAQ')).toBe(false);
+  });
+
+  it('does not count dated headings inside a code fence (a documented format)', () => {
+    const doc = [
+      '# Doc',
+      '',
+      'Format per entry:',
+      '',
+      '```',
+      '## 2026-05-14 — example',
+      '## 2026-05-15 — example',
+      '## 2026-05-16 — example',
+      '```',
+      '',
+      'Live prose, not a ledger.',
+    ].join('\n');
+    expect(isAppendOnlyLog(doc)).toBe(false);
+  });
+
+  it('does not fire when dated entries are incidental, not the dominant structure', () => {
+    // Three dated `##` among twenty prose `##`: a bloated doc, not a ledger.
+    const sections = ['# Big doc'];
+    for (let i = 0; i < 20; i += 1) sections.push(`## Section ${i}\nbody`);
+    sections.splice(3, 0, '## 2026-01-01 note', '## 2026-02-01 note', '## 2026-03-01 note');
+    expect(isAppendOnlyLog(sections.join('\n'))).toBe(false);
+  });
+
+  it('requires the dated entries to dominate their own level (sibling, not mixed)', () => {
+    // Modal level is `##` (20 prose siblings); three dated `###` do not qualify.
+    const sections = ['# Title'];
+    for (let i = 0; i < 20; i += 1) sections.push(`## P${i}`);
+    sections.push('### 2026-01-01 a', '### 2026-02-01 b', '### 2026-03-01 c');
+    expect(isAppendOnlyLog(sections.join('\n'))).toBe(false);
   });
 });
 
