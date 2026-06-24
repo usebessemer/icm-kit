@@ -124,6 +124,35 @@ describe('audit(): F1 MONOLITHIC_CONTEXT', () => {
     );
     expect(rule(findings, 'MONOLITHIC_CONTEXT')).toHaveLength(0);
   });
+
+  it('does NOT fire on an oversized append-only log (accreting ledger, §4.1)', () => {
+    // ~300 dated entries, comfortably over the 8000-token cap, but exempt: an
+    // append-only log grows by design (tail-archive, not split).
+    const entries = Array.from(
+      { length: 300 },
+      (_, i) => `## 2026-01-${String((i % 28) + 1).padStart(2, '0')} — entry ${i}\n` +
+        'word '.repeat(30),
+    ).join('\n\n');
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# r',
+        'decisions/log.md': `# Decisions Log\n\nAppend-only record.\n\n${entries}`,
+      }),
+    );
+    expect(rule(findings, 'MONOLITHIC_CONTEXT')).toHaveLength(0);
+  });
+
+  it('still fires on an oversized file with too few dated entries to be a log', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# r',
+        'references/notes.md':
+          '# Notes\n\n## 2026-01-01 kickoff\n\n## 2026-02-01 review\n\n' +
+          'word '.repeat(8500),
+      }),
+    );
+    expect(at(findings, 'MONOLITHIC_CONTEXT', 'references/notes.md')).toBeDefined();
+  });
 });
 
 describe('audit(): F3 STALE_CONTENT (scoped to the load/skip table)', () => {

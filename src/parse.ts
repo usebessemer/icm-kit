@@ -229,6 +229,33 @@ export function splitSections(markdown: string): Section[] {
   return sections;
 }
 
+/** A section heading that opens with an ISO date, after any leading marker. */
+const DATED_ENTRY_HEADING = /^[\s*_>]*\d{4}-\d{2}-\d{2}\b/;
+
+/** Minimum dated entries that make a file an append-only log (§4.1). */
+const APPEND_ONLY_MIN_ENTRIES = 3;
+
+/**
+ * True when a file is an append-only log: an accreting ledger whose body is a
+ * run of dated entries (`## 2026-05-14 — ...`, `### 2026-06-10 · ...`), such as
+ * a decisions log or an async channel. Detected structurally, by counting
+ * sibling headings that open with an ISO date; a template heading with a literal
+ * `YYYY-MM-DD` placeholder does not count, only real dates. Such files grow by
+ * design, so F1 exempts them from the size cap (SPEC §4.1): the hygiene is a
+ * tail-archive of old entries, not a split. The threshold keeps ordinary prose
+ * (which rarely carries three dated headings) from qualifying.
+ */
+export function isAppendOnlyLog(content: string): boolean {
+  let dated = 0;
+  for (const section of splitSections(content)) {
+    if (DATED_ENTRY_HEADING.test(section.heading)) {
+      dated += 1;
+      if (dated >= APPEND_ONLY_MIN_ENTRIES) return true;
+    }
+  }
+  return false;
+}
+
 /** Headings that mark a section as recognisably `identity` content (§2.3). */
 const IDENTITY_HEADING =
   /\b(identity|voice|tone|conventions?|persona|principles?|modes?|role|who (we|you) are|style guide|about (us|me|you))\b/i;

@@ -1,6 +1,6 @@
 {
   "name": "icm-kit",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Tooling for the Interpretable Context Methodology: workspace scaffolder and linter.",
   "type": "module",
   "bin": {
