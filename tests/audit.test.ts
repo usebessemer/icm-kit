@@ -153,6 +153,25 @@ describe('audit(): F1 MONOLITHIC_CONTEXT', () => {
     );
     expect(at(findings, 'MONOLITHIC_CONTEXT', 'references/notes.md')).toBeDefined();
   });
+
+  it('does NOT exempt a CLAUDE.md even when it carries dated headings (L0 cap holds)', () => {
+    const dated = '## 2026-01-01 a\n## 2026-02-01 b\n## 2026-03-01 c\n';
+    const findings = audit(
+      buildWorkspace({ 'CLAUDE.md': `# root\n${dated}` + 'word '.repeat(4500) }),
+    );
+    expect(at(findings, 'MONOLITHIC_CONTEXT', 'CLAUDE.md')).toBeDefined();
+  });
+
+  it('still fires on an oversized bloat file with only incidental dated headings', () => {
+    // The over-exempt probe: three dated `##` scattered among prose `##` must
+    // not buy a size exemption (dominance guard).
+    const prose = Array.from({ length: 20 }, (_, i) => `## Section ${i}\n` + 'word '.repeat(450));
+    const body = ['# Big', '## 2026-01-01 x', '## 2026-02-01 y', '## 2026-03-01 z', ...prose];
+    const findings = audit(
+      buildWorkspace({ 'CLAUDE.md': '# r', 'references/bloat.md': body.join('\n') }),
+    );
+    expect(at(findings, 'MONOLITHIC_CONTEXT', 'references/bloat.md')).toBeDefined();
+  });
 });
 
 describe('audit(): F3 STALE_CONTENT (scoped to the load/skip table)', () => {

@@ -181,6 +181,39 @@ describe('isAppendOnlyLog (F1 append-only exemption, §4.1)', () => {
     );
     expect(isAppendOnlyLog('# Guide\n\n## Setup\n\n## Usage\n\n## FAQ')).toBe(false);
   });
+
+  it('does not count dated headings inside a code fence (a documented format)', () => {
+    const doc = [
+      '# Doc',
+      '',
+      'Format per entry:',
+      '',
+      '```',
+      '## 2026-05-14 — example',
+      '## 2026-05-15 — example',
+      '## 2026-05-16 — example',
+      '```',
+      '',
+      'Live prose, not a ledger.',
+    ].join('\n');
+    expect(isAppendOnlyLog(doc)).toBe(false);
+  });
+
+  it('does not fire when dated entries are incidental, not the dominant structure', () => {
+    // Three dated `##` among twenty prose `##`: a bloated doc, not a ledger.
+    const sections = ['# Big doc'];
+    for (let i = 0; i < 20; i += 1) sections.push(`## Section ${i}\nbody`);
+    sections.splice(3, 0, '## 2026-01-01 note', '## 2026-02-01 note', '## 2026-03-01 note');
+    expect(isAppendOnlyLog(sections.join('\n'))).toBe(false);
+  });
+
+  it('requires the dated entries to dominate their own level (sibling, not mixed)', () => {
+    // Modal level is `##` (20 prose siblings); three dated `###` do not qualify.
+    const sections = ['# Title'];
+    for (let i = 0; i < 20; i += 1) sections.push(`## P${i}`);
+    sections.push('### 2026-01-01 a', '### 2026-02-01 b', '### 2026-03-01 c');
+    expect(isAppendOnlyLog(sections.join('\n'))).toBe(false);
+  });
 });
 
 describe('splitSections', () => {

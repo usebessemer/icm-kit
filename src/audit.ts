@@ -226,12 +226,13 @@ function checkMonolithicSize(
   // not token-counted, because a byte count is not a meaningful token estimate
   // for a binary format (SPEC §4.1).
   if (!file.isText) return;
+  const isClaudeMd = baseName(file.path) === ROOT_IDENTITY_FILE;
   // An append-only log (a decisions log, an async channel) is an accreting
   // ledger that grows by design; it is exempt from the size cap, since the
-  // remedy is a tail-archive of old entries, not a split (SPEC §4.1). A
-  // CLAUDE.md is never an append-only log, so this never relaxes the L0 cap.
-  if (isAppendOnlyLog(file.content)) return;
-  const isClaudeMd = baseName(file.path) === ROOT_IDENTITY_FILE;
+  // remedy is a tail-archive of old entries, not a split (SPEC §4.1). The
+  // exemption never applies to a CLAUDE.md: the L0 identity cap holds even if
+  // the file happens to carry dated headings.
+  if (!isClaudeMd && isAppendOnlyLog(file.content)) return;
   const cap = isClaudeMd
     ? thresholds.claudeMdMaxTokens
     : thresholds.fileMaxTokens;

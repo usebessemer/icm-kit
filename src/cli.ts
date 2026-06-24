@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { audit } from './audit.js';
 import { readWorkspace } from './workspace.js';
+import { SPEC_VERSION } from './model.js';
 import type { Finding } from './model.js';
 
 const program = new Command();
@@ -50,7 +51,7 @@ program
 
 function report(findings: readonly Finding[]): void {
   if (findings.length === 0) {
-    console.log('No findings: workspace is ICM-compliant against SPEC v0.9.');
+    console.log(`No findings: workspace is ICM-compliant against SPEC ${SPEC_VERSION}.`);
     return;
   }
   for (const f of findings) {

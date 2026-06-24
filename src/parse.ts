@@ -236,24 +236,39 @@ const DATED_ENTRY_HEADING = /^[\s*_>]*\d{4}-\d{2}-\d{2}\b/;
 const APPEND_ONLY_MIN_ENTRIES = 3;
 
 /**
- * True when a file is an append-only log: an accreting ledger whose body is a
- * run of dated entries (`## 2026-05-14 — ...`, `### 2026-06-10 · ...`), such as
- * a decisions log or an async channel. Detected structurally, by counting
- * sibling headings that open with an ISO date; a template heading with a literal
- * `YYYY-MM-DD` placeholder does not count, only real dates. Such files grow by
- * design, so F1 exempts them from the size cap (SPEC §4.1): the hygiene is a
- * tail-archive of old entries, not a split. The threshold keeps ordinary prose
- * (which rarely carries three dated headings) from qualifying.
+ * True when a file is an append-only log: an accreting ledger whose dominant
+ * structure is a run of dated sibling entries (`## 2026-05-14 ...`,
+ * `### 2026-06-10 · ...`), such as a decisions log or an async channel. Such
+ * files grow by design, so F1 exempts them from the size cap (SPEC §4.1): the
+ * hygiene is a tail-archive of old entries, not a split.
+ *
+ * Detected structurally and conservatively, so a large bloated file does not
+ * slip the cap by carrying a few incidental dated headings:
+ * - Fenced code is stripped first (as for F8/F9), so a documented log *format*
+ *   in a code example does not count as real entries.
+ * - A literal `YYYY-MM-DD` template placeholder is not a real date, so only
+ *   actual dates count.
+ * - The dated entries must dominate their level: at the modal heading level (the
+ *   level carrying the most headings), the dated headings must be a strict
+ *   majority and number at least `APPEND_ONLY_MIN_ENTRIES`. A ledger of all-`##`
+ *   dated entries qualifies; a design doc with three dated `##` among twenty
+ *   prose `##` does not.
  */
 export function isAppendOnlyLog(content: string): boolean {
-  let dated = 0;
-  for (const section of splitSections(content)) {
-    if (DATED_ENTRY_HEADING.test(section.heading)) {
-      dated += 1;
-      if (dated >= APPEND_ONLY_MIN_ENTRIES) return true;
-    }
+  const perLevel = new Map<number, { total: number; dated: number }>();
+  for (const section of splitSections(stripFencedCode(content))) {
+    if (section.level === 0) continue; // the preamble carries no heading
+    const bucket = perLevel.get(section.level) ?? { total: 0, dated: 0 };
+    bucket.total += 1;
+    if (DATED_ENTRY_HEADING.test(section.heading)) bucket.dated += 1;
+    perLevel.set(section.level, bucket);
   }
-  return false;
+  let modal: { total: number; dated: number } | undefined;
+  for (const bucket of perLevel.values()) {
+    if (!modal || bucket.total > modal.total) modal = bucket;
+  }
+  if (modal === undefined) return false;
+  return modal.dated >= APPEND_ONLY_MIN_ENTRIES && modal.dated * 2 > modal.total;
 }
 
 /** Headings that mark a section as recognisably `identity` content (§2.3). */

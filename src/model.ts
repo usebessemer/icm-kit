@@ -1,8 +1,8 @@
 /**
  * The ICM rule model.
  *
- * This module is the TypeScript encoding of SPEC.md (SPEC v0.9). It is the
- * single source both `init` and `audit` consume: the classification axes
+ * This module is the TypeScript encoding of SPEC.md (see `SPEC_VERSION`). It is
+ * the single source both `init` and `audit` consume: the classification axes
  * (SPEC §2.2 to §2.4), the classification result shape (§2.5), the
  * well-formedness rules (§3), and the failure modes (§4).
  *
@@ -10,6 +10,13 @@
  * clause in SPEC.md. When the spec and this file disagree, the spec wins and
  * this file is the bug.
  */
+
+/**
+ * The SPEC.md version this code implements. The one in-code home for the spec
+ * version: bump it in lockstep with the SPEC.md title and §6 line on any
+ * spec-touching change, so the audit banner never drifts from the spec.
+ */
+export const SPEC_VERSION = 'v0.11' as const;
 
 // ---------------------------------------------------------------------------
 // Classification axes (SPEC §2.2 to §2.4)
