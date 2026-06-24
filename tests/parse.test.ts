@@ -59,6 +59,20 @@ describe('extractLoadSkipReferences (within-cell resolution, §4.3)', () => {
     expect(refs[0].candidates).toContain('references/kit/_template.md');
   });
 
+  it('qualifies a bare name with a relative directory token in the same cell (#27)', () => {
+    // The AIOS shape: the same-cell directory is itself a sibling-workspace hop.
+    // The pairing must produce the relative candidate; the resolver (§4.3) then
+    // POSIX-normalizes it against the containing CLAUDE.md's directory.
+    const refs = extractLoadSkipReferences(
+      table('`../coaching/references/sc-methodology/complexes/` (catalog + `_template.md`)'),
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0].token).toBe('_template.md');
+    expect(refs[0].candidates).toContain(
+      '../coaching/references/sc-methodology/complexes/_template.md',
+    );
+  });
+
   it('marks a bare structural-convention name (CONTEXT.md) as structural', () => {
     expect(extractLoadSkipReferences(table("the stage's `CONTEXT.md`"))).toEqual([
       { token: 'CONTEXT.md', structural: true, candidates: ['CONTEXT.md'] },

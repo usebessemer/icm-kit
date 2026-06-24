@@ -169,6 +169,92 @@ describe('audit(): F3 STALE_CONTENT (scoped to the load/skip table)', () => {
   });
 });
 
+describe('audit(): F3 resolves relative paths from a nested CLAUDE.md (#27)', () => {
+  // The AIOS shape: a nested workspace's load/skip table points up to a root
+  // home (`../../context/...`) and across to a sibling workspace (`../coaching/...`).
+  // The resolver POSIX-normalizes each candidate against the containing
+  // CLAUDE.md's directory, so a ref whose target exists must not be flagged.
+  it('does NOT fire on cross-altitude and sibling refs whose targets exist', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root identity',
+        'context/training.md': 'protocol',
+        'identity/voice.md': 'voice',
+        'decisions/log.md': 'log',
+        'workspaces/coaching/CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| t | `../../context/training.md`, `../../identity/voice.md` | x |',
+        'workspaces/coaching/references/sc-methodology/session-structure.md': 'sessions',
+        'workspaces/consulting/CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| t | `../../decisions/log.md` | x |',
+        'workspaces/training/CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| plan | `../../context/training.md`, `../coaching/references/sc-methodology/session-structure.md` | x |',
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
+  });
+
+  it('does NOT fire on a bare _template.md qualified by a relative same-cell dir', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root identity',
+        'workspaces/coaching/references/sc-methodology/complexes/_template.md': 'tpl',
+        'workspaces/training/CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| design | `../coaching/references/sc-methodology/complexes/` (catalog + `_template.md`) | x |',
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
+  });
+
+  it('normalizes a same-directory (./) ref from the root CLAUDE.md', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| t | `./references/voice.md` | x |',
+        'references/voice.md': 'voice',
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(0);
+  });
+
+  it('still fires on a genuinely missing relative ref from a nested CLAUDE.md', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root identity',
+        'workspaces/coaching/CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| t | `../../context/gone.md` | x |',
+      }),
+    );
+    expect(
+      at(findings, 'STALE_CONTENT', 'workspaces/coaching/CLAUDE.md')?.message,
+    ).toContain('../../context/gone.md');
+  });
+});
+
+describe('audit(): F3 dedups one stale ref to one finding (#27)', () => {
+  it('emits one finding for a token repeated across N cells', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| a | references/gone.md | x |\n| b | references/gone.md | y |\n| c | references/gone.md | z |',
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(1);
+    expect(at(findings, 'STALE_CONTENT', 'CLAUDE.md')?.message).toContain(
+      'references/gone.md',
+    );
+  });
+
+  it('keeps distinct missing tokens as distinct findings', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| a | references/gone.md | x |\n| b | references/also-gone.md | y |',
+      }),
+    );
+    expect(rule(findings, 'STALE_CONTENT')).toHaveLength(2);
+  });
+});
+
 describe('audit(): F5 LAYER_BLOAT (size + heading, not marker density)', () => {
   it('fires on a directive-dense ops manual section (the inversion fix)', () => {
     const findings = audit(
