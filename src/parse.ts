@@ -581,8 +581,14 @@ export const SUPERSEDED_MARKERS: readonly string[] = [
   ...SUPERSEDED_PHRASE_MARKERS,
 ];
 
-/** Leading blockquote / emphasis / heading / bracket punctuation to strip. */
-const BANNER_PUNCTUATION = /^[\s>*_#`(]+/;
+/**
+ * Leading blockquote / emphasis / heading / bracket punctuation to strip, plus a
+ * leading emoji / variation-selector run so a banner prefixed with a warning
+ * glyph (`> **⚠️ REFRAMED ...`) still reaches the marker test. Emoji are matched
+ * via `\p{Extended_Pictographic}` (the `⚠` code point) and the variation
+ * selectors `U+FE00-FE0F` (the `️` that follows it); the `u` flag enables both.
+ */
+const BANNER_PUNCTUATION = new RegExp('^[\\s>*_#`(\\p{Extended_Pictographic}\\uFE00-\\uFE0F]+', 'u');
 
 /** A self-complete phrase marker at line start. */
 const PHRASE_BANNER = new RegExp(`^(?:${SUPERSEDED_PHRASE_MARKERS.join('|')})\\b`);
@@ -590,13 +596,22 @@ const PHRASE_BANNER = new RegExp(`^(?:${SUPERSEDED_PHRASE_MARKERS.join('|')})\\b
 /**
  * A single-word marker at line start that is label-shaped: it ends the line, or
  * is followed by a separator (`:.,;!?`, a closing bracket), a closing emphasis
- * mark (`*_~` or a backtick, directly attached), or ` by`/` as`. Prose that
- * merely opens with the word and continues into a sentence does not match.
+ * mark (`*_~` or a backtick, directly attached), a label-terminated ISO date, or
+ * ` by`/` as`. The date case covers the `SUPERSEDED 2026-06-01 by ...` /
+ * `REFRAMED 2026-06-03 (see ...)` banner shape, where a date follows the marker
+ * before any separator. The date must itself be label-terminated (line-end, a
+ * separator / bracket / em-dash `U+2014`, a closing emphasis mark, or ` by`/
+ * ` as`): a `marker + date` that runs on into a verb (`Deprecated 2024-01-15 was
+ * the original ship date`) is prose, not a banner, so the post-date anchor keeps
+ * it silent. An opening `(` counts as label-termination because a parenthetical
+ * annotates rather than continues the sentence (the `(see ...)` citation form).
  */
 const WORD_BANNER = new RegExp(
   '^(?:' +
     SUPERSEDED_WORD_MARKERS.join('|') +
-    ')(?=$|\\s*[:.,;!?)\\]]|[*_`~]|\\s+(?:by|as)\\b)',
+    ')(?=$|\\s*[:.,;!?)\\]]|[*_`~]|' +
+    '\\s+\\d{4}-\\d{2}-\\d{2}(?=$|\\s*[:.,;!?)(\\u2014\\]]|\\s*[*_`~]|\\s+(?:by|as)\\b)|' +
+    '\\s+(?:by|as)\\b)',
 );
 
 /** A `status:` line whose value is a dead-status marker. */

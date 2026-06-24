@@ -34,6 +34,6 @@ describe('icm-kit audit (CLI)', () => {
     expect(stdout).toContain('HIDDEN_CONTEXT (enforces ROUTABLE_FILES)');
     expect(stdout).toContain('DUPLICATION');
     expect(stdout).toContain('SUPERSEDED_BUT_LIVE');
-    expect(stdout).toContain('15 finding(s).');
+    expect(stdout).toContain('17 finding(s).');
   }, 20000);
 });
