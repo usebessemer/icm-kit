@@ -513,14 +513,30 @@ describe('hasSupersededBanner (F9 top-region banner, §4.9)', () => {
         scan,
       ),
     ).toBe(true);
-    // The bare date shape, with and without an emoji prefix.
+    // The bare date shape, plus a date + em-dash + emoji-prefix case (a real
+    // banner separator); the post-date anchor accepts the em-dash terminator.
     expect(hasSupersededBanner('Superseded 2026-06-01.', scan)).toBe(true);
     expect(hasSupersededBanner('⚠️ Deprecated 2025-01-01 — see v2.', scan)).toBe(true);
   });
 
   it('does not treat a marker followed by a non-date token as a dated banner', () => {
-    // Only a full ISO date is announcement-shaped; a bare year or a word is not.
+    // Only a full ISO date is date-shaped; a bare year or a word is not.
     expect(hasSupersededBanner('Deprecated 2024 roadmap notes', scan)).toBe(false);
     expect(hasSupersededBanner('Obsolete inventory list for the warehouse', scan)).toBe(false);
+  });
+
+  it('does not fire on prose that opens with a marker and an ISO date but runs on', () => {
+    // The date must be label-terminated; a date that flows into a verb/noun is
+    // an ordinary sentence, not a banner. These are the FP class the post-date
+    // anchor closes (#28 review): each must stay silent.
+    expect(
+      hasSupersededBanner('Deprecated 2024-01-15 was the original ship date', scan),
+    ).toBe(false);
+    expect(
+      hasSupersededBanner('Superseded 2023-01-01 builds are no longer supported', scan),
+    ).toBe(false);
+    expect(
+      hasSupersededBanner('Obsolete 2020-01-01 hardware is still in the warehouse', scan),
+    ).toBe(false);
   });
 });

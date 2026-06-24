@@ -596,17 +596,22 @@ const PHRASE_BANNER = new RegExp(`^(?:${SUPERSEDED_PHRASE_MARKERS.join('|')})\\b
 /**
  * A single-word marker at line start that is label-shaped: it ends the line, or
  * is followed by a separator (`:.,;!?`, a closing bracket), a closing emphasis
- * mark (`*_~` or a backtick, directly attached), an ISO date (`2026-06-01`), or
- * ` by`/` as`. The date case covers the common `SUPERSEDED 2026-06-01 by ...` /
+ * mark (`*_~` or a backtick, directly attached), a label-terminated ISO date, or
+ * ` by`/` as`. The date case covers the `SUPERSEDED 2026-06-01 by ...` /
  * `REFRAMED 2026-06-03 (see ...)` banner shape, where a date follows the marker
- * before any separator: a marker immediately trailed by a date is announcement-
- * shaped, never ordinary prose. Prose that merely opens with the word and
- * continues into a sentence does not match.
+ * before any separator. The date must itself be label-terminated (line-end, a
+ * separator / bracket / em-dash `U+2014`, a closing emphasis mark, or ` by`/
+ * ` as`): a `marker + date` that runs on into a verb (`Deprecated 2024-01-15 was
+ * the original ship date`) is prose, not a banner, so the post-date anchor keeps
+ * it silent. An opening `(` counts as label-termination because a parenthetical
+ * annotates rather than continues the sentence (the `(see ...)` citation form).
  */
 const WORD_BANNER = new RegExp(
   '^(?:' +
     SUPERSEDED_WORD_MARKERS.join('|') +
-    ')(?=$|\\s*[:.,;!?)\\]]|[*_`~]|\\s+\\d{4}-\\d{2}-\\d{2}\\b|\\s+(?:by|as)\\b)',
+    ')(?=$|\\s*[:.,;!?)\\]]|[*_`~]|' +
+    '\\s+\\d{4}-\\d{2}-\\d{2}(?=$|\\s*[:.,;!?)(\\u2014\\]]|\\s*[*_`~]|\\s+(?:by|as)\\b)|' +
+    '\\s+(?:by|as)\\b)',
 );
 
 /** A `status:` line whose value is a dead-status marker. */
