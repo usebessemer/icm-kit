@@ -138,6 +138,52 @@ export function extractLoadSkipReferences(content: string): LoadSkipReference[] 
 }
 
 // ---------------------------------------------------------------------------
+// Markdown links (F2 reachability closure, §4.2)
+// ---------------------------------------------------------------------------
+
+/** An inline Markdown link's destination: the `dest` of every `](dest)`. */
+const MD_LINK = /\]\(\s*([^)]+?)\s*\)/g;
+
+/** A URI scheme prefix (`https:`, `mailto:`, etc.): an external, out-of-tree link. */
+const URI_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+
+/**
+ * The destinations of the inline Markdown links in `content` (F2 reachability,
+ * SPEC §4.2), as raw path tokens for the caller to resolve and tree-test.
+ *
+ * Only real link syntax (`](dest)`) counts: a backtick filename in prose
+ * (`` `foo.md` ``) is not a link and is never returned, mirroring how F3 scopes
+ * to real load/skip references rather than prose mentions. Fenced code is
+ * stripped first (as for §4.1/§4.8/§4.9), so a link shown inside a code example
+ * does not route a file. Each destination is cleaned to a bare path: a CommonMark
+ * `<...>` wrapper is removed, a `"title"` is dropped, and a `#fragment` is cut.
+ * External destinations (a URI scheme such as `https:`) and pure `#anchor`
+ * fragments are dropped: they resolve to nothing in-tree.
+ */
+export function extractMarkdownLinks(content: string): string[] {
+  const targets: string[] = [];
+  for (const match of stripFencedCode(content).matchAll(MD_LINK)) {
+    let dest = match[1].trim();
+    if (dest.startsWith('<')) {
+      // A CommonMark angle-bracket destination runs to the closing `>` and may
+      // hold spaces literally, so it is not split on whitespace.
+      const close = dest.indexOf('>');
+      dest = close === -1 ? dest.slice(1) : dest.slice(1, close);
+    } else {
+      // A bare destination ends at the first whitespace: a `path "title"` form.
+      const space = dest.search(/\s/);
+      if (space !== -1) dest = dest.slice(0, space);
+    }
+    const hash = dest.indexOf('#'); // a `path#fragment` form: keep the path
+    if (hash !== -1) dest = dest.slice(0, hash);
+    dest = dest.trim();
+    if (dest === '' || URI_SCHEME.test(dest)) continue;
+    targets.push(dest);
+  }
+  return targets;
+}
+
+// ---------------------------------------------------------------------------
 // Declared work folders (§2.5 work-folder row)
 // ---------------------------------------------------------------------------
 

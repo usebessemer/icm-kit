@@ -827,6 +827,108 @@ describe('audit(): work-folder declaration', () => {
   });
 });
 
+describe('audit(): F2 reachability closure (pointer-file routing, #33)', () => {
+  it('routes files indexed only by a routed pointer file (the coaching shape)', () => {
+    // coaching/CLAUDE.md names the `ed.md` pointer; ed.md's ## Workspace table
+    // links the program files. The programs sit in no canonical home and no
+    // CLAUDE.md names them, yet they are reachable through the routed pointer.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '# Coaching\n\n## Clients\n| Client | Pointer |\n|--|--|\n| Ed | [ed.md](ed.md) |',
+        'ed.md':
+          '# Ed\n\n## Workspace\n- [ed/2026-06-build-the-ladder.md](ed/2026-06-build-the-ladder.md)\n- [ed/2026-06-hold-the-line.md](ed/2026-06-hold-the-line.md)',
+        'ed/2026-06-build-the-ladder.md': '# Build the ladder\n\nprogram content',
+        'ed/2026-06-hold-the-line.md': '# Hold the line\n\nprogram content',
+      }),
+    );
+    // No HIDDEN_CONTEXT anywhere: the pointer is named, the programs are linked.
+    expect(rule(findings, 'HIDDEN_CONTEXT')).toHaveLength(0);
+  });
+
+  it('routes transitively, multi-hop, resolving each link against its own dir', () => {
+    // canonical context hub -> ../ed/a.md -> b.md, each link relative to the
+    // referencing file's directory (a `../` cross-dir hop included).
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root',
+        'context/hub.md': 'Start at [the program](../ed/a.md).',
+        'ed/a.md': 'Then [the next step](b.md).',
+        'ed/b.md': 'leaf',
+      }),
+    );
+    expect(at(findings, 'HIDDEN_CONTEXT', 'ed/a.md')).toBeUndefined();
+    expect(at(findings, 'HIDDEN_CONTEXT', 'ed/b.md')).toBeUndefined();
+  });
+
+  it('still flags a genuine orphan no routed file references (over-trigger guard)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root\n\nThe hub is [here](context/hub.md).',
+        'context/hub.md': 'nothing links the orphan',
+        'orphan.md': 'no routed file references this file',
+      }),
+    );
+    expect(at(findings, 'HIDDEN_CONTEXT', 'orphan.md')).toBeDefined();
+    expect(paths(findings, 'HIDDEN_CONTEXT')).toEqual(['orphan.md']);
+  });
+
+  it('an orphan cannot bootstrap routing from another orphan', () => {
+    // Neither file is reachable from a canonical home, so the link between them
+    // routes nothing: both stay hidden.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root',
+        'orphan-a.md': 'see [b](orphan-b.md)',
+        'orphan-b.md': 'leaf',
+      }),
+    );
+    expect(paths(findings, 'HIDDEN_CONTEXT')).toEqual([
+      'orphan-a.md',
+      'orphan-b.md',
+    ]);
+  });
+
+  it('a dead link routes no phantom file and does not crash', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root\n\n[hub](context/hub.md)',
+        'context/hub.md': 'see [gone](../does-not-exist.md)',
+        'orphan.md': 'still hidden',
+      }),
+    );
+    // Only the real orphan is hidden; the dangling target invents no finding.
+    expect(paths(findings, 'HIDDEN_CONTEXT')).toEqual(['orphan.md']);
+  });
+
+  it('external URLs and #anchors route nothing', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# root\n\n[hub](context/hub.md)',
+        'context/hub.md':
+          'see [site](https://example.com/orphan.md) and [top](#heading)',
+        'orphan.md': 'hidden despite the external lookalike link',
+      }),
+    );
+    expect(at(findings, 'HIDDEN_CONTEXT', 'orphan.md')).toBeDefined();
+  });
+
+  it('routes a pointer named in a load/skip table and the file it links', () => {
+    // The pointer `ed.md` is routed by a load/skip cell; its own link then routes
+    // the program in a subfolder that no CLAUDE.md declares as a work folder, so
+    // the program is reachable only through the closure.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Load/skip table\n| Task | Load | Skip |\n|--|--|--|\n| ed | ed.md | x |',
+        'ed.md': 'program: [a](programs/a.md)',
+        'programs/a.md': 'leaf',
+      }),
+    );
+    expect(rule(findings, 'HIDDEN_CONTEXT')).toHaveLength(0);
+  });
+});
+
 describe('audit(): honest reproduction of the AIOS shapes (#11)', () => {
   const findings = audit(readWorkspace(aiosRoot));
 

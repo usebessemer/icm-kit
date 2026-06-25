@@ -66,6 +66,7 @@ import {
 } from './paths.js';
 import {
   extractLoadSkipReferences,
+  extractMarkdownLinks,
   findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
@@ -105,6 +106,12 @@ export function audit(workspace: Workspace, options: AuditOptions = {}): Finding
     classifications.set(file.path, classify(file.path, tree, claudeMd));
   }
 
+  // Workspace-level routability: a file is routed if reachable from a canonical
+  // home through a chain of references in already-routed files (W5, §4.2). This
+  // needs file contents (to read pointer links), so it is computed here, not in
+  // the per-file classifier, and threaded into the F2 check below.
+  const reachable = computeReachable(files, classifications, treeSet);
+
   const findings: Finding[] = [];
 
   checkRootIdentity(treeSet, findings);
@@ -112,7 +119,7 @@ export function audit(workspace: Workspace, options: AuditOptions = {}): Finding
 
   for (const file of files) {
     const c = classifications.get(file.path)!;
-    checkRoutable(file.path, c, findings);
+    checkRoutable(file.path, reachable, findings);
     checkOverRouting(file.path, tree, thresholds, findings);
     checkMonolithicSize(file, countTokens, thresholds, findings);
     checkContentSegregation(file, c, findings);
@@ -177,21 +184,106 @@ function checkSingleRootIdentity(
 // Routability (W5 / F2) and routing depth (W6 / F4)
 // ---------------------------------------------------------------------------
 
+/**
+ * F2 HIDDEN_CONTEXT (SPEC §4.2, W5): a Markdown file outside the routing
+ * reachability closure. A file is routed if it is reachable from a canonical
+ * home through a chain of references in already-routed files (see
+ * `computeReachable`); one left outside that set is reached by nothing routed,
+ * so the agent never reads it. The closure subsumes the per-file classifier's
+ * routing (its seed) and adds files routed only by a routed pointer's links, so
+ * a pointer-indexed file no longer mis-fires F2.
+ */
 function checkRoutable(
   path: string,
-  c: Classification,
+  reachable: ReadonlySet<string>,
   findings: Finding[],
 ): void {
-  if (isMarkdown(path) && c.unclassified) {
+  if (isMarkdown(path) && !reachable.has(path)) {
     findings.push({
       rule: F.F2,
       severity: WARNING,
       path,
       message:
-        'No routing path: not in a canonical home and not named by any CLAUDE.md (F2 HIDDEN_CONTEXT).',
+        'No routing path: not in a canonical home, not named by any CLAUDE.md, and not referenced by any routed file (F2 HIDDEN_CONTEXT).',
       relatedRule: W.W5,
     });
   }
+}
+
+/**
+ * The routing reachability closure (SPEC §4.2, W5): every Markdown file
+ * reachable from a canonical home through a chain of resolved references in
+ * already-routed files.
+ *
+ * Seed = today's routing: every Markdown file the per-file classifier routes
+ * (canonical and harness homes, stage and work files, and files a CLAUDE.md
+ * names). Then a fixpoint: for each file already in the set, follow its outbound
+ * Markdown references (links from any file, plus a CLAUDE.md's load/skip-table
+ * cells) and add every one that resolves to an in-tree Markdown file, until no
+ * file is added. The closure expands only through files already routed, so an
+ * orphan linking another orphan cannot bootstrap routing; dead, external, and
+ * anchor links resolve to nothing and add no phantom file (the §4.2 guards).
+ */
+function computeReachable(
+  files: readonly WorkspaceFile[],
+  classifications: ReadonlyMap<string, Classification>,
+  treeSet: ReadonlySet<string>,
+): Set<string> {
+  const contentByPath = new Map<string, string>();
+  for (const file of files) contentByPath.set(file.path, file.content);
+
+  const reachable = new Set<string>();
+  for (const file of files) {
+    if (isMarkdown(file.path) && !classifications.get(file.path)!.unclassified) {
+      reachable.add(file.path);
+    }
+  }
+
+  const queue = [...reachable];
+  while (queue.length > 0) {
+    const from = queue.pop()!;
+    for (const target of outboundMarkdownRefs(
+      from,
+      contentByPath.get(from) ?? '',
+      treeSet,
+    )) {
+      if (!reachable.has(target)) {
+        reachable.add(target);
+        queue.push(target);
+      }
+    }
+  }
+  return reachable;
+}
+
+/**
+ * The in-tree Markdown files a routed file references (one F2 closure step,
+ * §4.2). Follows the Markdown links of any file, plus the load/skip-table cells
+ * of a CLAUDE.md, each resolved relative to the referencing file's own
+ * directory. Only targets that land on an existing Markdown tree entry are
+ * returned; a link to a non-existent path, an external URL, or a bare `#anchor`
+ * resolves to nothing and drops out.
+ */
+function outboundMarkdownRefs(
+  from: string,
+  content: string,
+  treeSet: ReadonlySet<string>,
+): string[] {
+  const baseDir = dirOf(from);
+  const out: string[] = [];
+  const add = (resolved: string | undefined): void => {
+    if (resolved !== undefined && isMarkdown(resolved)) out.push(resolved);
+  };
+  for (const link of extractMarkdownLinks(content)) {
+    add(resolveRef(link, baseDir, treeSet));
+  }
+  if (baseName(from) === ROOT_IDENTITY_FILE) {
+    for (const ref of extractLoadSkipReferences(content)) {
+      if (ref.structural) continue; // a per-folder convention placeholder
+      add(resolveExisting(ref, baseDir, treeSet));
+    }
+  }
+  return out;
 }
 
 function checkOverRouting(
@@ -408,23 +500,41 @@ function checkStaleContent(
 /**
  * The first candidate of `ref` that exists in the tree, tried as-is and
  * relative to the containing CLAUDE.md's directory; `undefined` if none resolve.
- * Each candidate is POSIX-normalized (collapsing `.`/`..`) before the membership
- * test, so a relative pointer from a nested CLAUDE.md (`../../context/f.md`)
- * resolves against the tree's normalized paths rather than failing on its
- * literal `..` segments (SPEC §4.3). The resolved path is returned normalized.
+ * Resolution and normalization are shared with the F2 closure via `resolveRef`,
+ * so a load/skip pointer and a Markdown link resolve identically (SPEC §4.3,
+ * §4.2). The resolved path is returned normalized.
  */
 function resolveExisting(
   ref: LoadSkipReference,
   root: string,
-  treeSet: Set<string>,
+  treeSet: ReadonlySet<string>,
 ): string | undefined {
   for (const candidate of ref.candidates) {
-    const direct = normalizePosix(candidate);
-    if (treeSet.has(direct)) return direct;
-    if (root !== '') {
-      const joined = normalizePosix(`${root}/${candidate}`);
-      if (treeSet.has(joined)) return joined;
-    }
+    const resolved = resolveRef(candidate, root, treeSet);
+    if (resolved !== undefined) return resolved;
+  }
+  return undefined;
+}
+
+/**
+ * The in-tree path a reference `token` resolves to: tried as-is
+ * (workspace-relative) and relative to `baseDir`, each POSIX-normalized
+ * (collapsing `.`/`..`) before the membership test, so a cross-altitude pointer
+ * (`../../context/f.md`) resolves against the tree's normalized paths instead of
+ * failing on its literal `..` segments. A `..` run that escapes the root reduces
+ * to a path no tree entry matches, so an out-of-tree reference resolves to
+ * nothing and never crashes (SPEC §4.2, §4.3).
+ */
+function resolveRef(
+  token: string,
+  baseDir: string,
+  treeSet: ReadonlySet<string>,
+): string | undefined {
+  const direct = normalizePosix(token);
+  if (treeSet.has(direct)) return direct;
+  if (baseDir !== '') {
+    const joined = normalizePosix(`${baseDir}/${token}`);
+    if (treeSet.has(joined)) return joined;
   }
   return undefined;
 }
