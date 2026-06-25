@@ -3,6 +3,7 @@ import {
   countIdentityMarkers,
   declaredWorkFolders,
   extractLoadSkipReferences,
+  extractMarkdownLinks,
   findDuplicateProse,
   hasBehaviourBlock,
   hasLoadSkipTable,
@@ -83,6 +84,53 @@ describe('extractLoadSkipReferences (within-cell resolution, §4.3)', () => {
   it('does not mark a qualified CONTEXT.md path as structural', () => {
     const refs = extractLoadSkipReferences(table('01-discovery/CONTEXT.md'));
     expect(refs[0].structural).toBe(false);
+  });
+});
+
+describe('extractMarkdownLinks (F2 reachability, §4.2)', () => {
+  it('returns the destination of an inline link', () => {
+    expect(extractMarkdownLinks('See [the plan](ed/plan.md) for context.')).toEqual([
+      'ed/plan.md',
+    ]);
+  });
+
+  it('returns every link in a workspace-index table', () => {
+    const md = [
+      '## Workspace',
+      '| Program | File |',
+      '| --- | --- |',
+      '| Ladder | [ed/2026-06-build.md](ed/2026-06-build.md) |',
+      '| Hold | [ed/2026-06-hold.md](ed/2026-06-hold.md) |',
+    ].join('\n');
+    expect(extractMarkdownLinks(md)).toEqual([
+      'ed/2026-06-build.md',
+      'ed/2026-06-hold.md',
+    ]);
+  });
+
+  it('strips a link title and a #fragment, keeping the path', () => {
+    expect(extractMarkdownLinks('[a](x.md "Title") [b](y.md#section)')).toEqual([
+      'x.md',
+      'y.md',
+    ]);
+  });
+
+  it('unwraps a CommonMark <...> destination', () => {
+    expect(extractMarkdownLinks('[a](<ed/the file.md>)')).toEqual(['ed/the file.md']);
+  });
+
+  it('drops a pure #anchor and an external URL', () => {
+    const md = '[top](#heading) and [site](https://example.com/x.md) and [mail](mailto:a@b.md)';
+    expect(extractMarkdownLinks(md)).toEqual([]);
+  });
+
+  it('ignores a backtick filename in prose (not a link)', () => {
+    expect(extractMarkdownLinks('Historic notes lived in `old-notes.md`.')).toEqual([]);
+  });
+
+  it('ignores links inside a fenced code block', () => {
+    const md = ['Real [here](real.md).', '```md', '[example](shown.md)', '```'].join('\n');
+    expect(extractMarkdownLinks(md)).toEqual(['real.md']);
   });
 });
 
