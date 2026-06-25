@@ -12,8 +12,10 @@
  *   workspace (root and nested), so a nested violation surfaces under its own
  *   W code at the nested path, rather than as a distinct W4 finding.
  * - W3 / F1 soft signal detect the content-MIXING case (a non-CLAUDE file with
- *   a dense embedded behaviour block). Detecting wrong-home placement by
- *   content inference is a later refinement.
+ *   a dense embedded behaviour block), exempting a transient leaf work file (a
+ *   per-item `working` product), where intrinsic behaviour density (a scripted
+ *   call agenda) is the deliverable, not a mix. Detecting wrong-home placement
+ *   by content inference is a later refinement.
  * - F5 LAYER_BLOAT keys off section size + heading shape, not marker density
  *   (which inverts on directive-dense ops manuals): a large CLAUDE.md section
  *   that is neither the load/skip table nor a recognisably identity heading.
@@ -347,6 +349,14 @@ function checkContentSegregation(
   // CLAUDE.md is the one file permitted to mix content types (§2.3).
   if (baseName(file.path) === ROOT_IDENTITY_FILE) return;
   if (!isMarkdown(file.path) || c.unclassified) return;
+  // A transient leaf work file (a per-item `working` product placed at depth: a
+  // stage work file or a declared-work-folder deliverable) is exempt: it is
+  // loaded only when its own work item is the task, never always-loaded and not
+  // an inherited contract, so an intrinsic behaviour block (a scripted call
+  // agenda, scripted lines, a Tone/Don't list) is part of the deliverable, not
+  // the content-type mixing W3 guards against. An always-loaded standing file
+  // (identity/situational) or an on-demand reference still fires (§4.1 soft).
+  if (isWorkProduct(c)) return;
   if (hasBehaviourBlock(file.content)) {
     findings.push({
       rule: F.F1,

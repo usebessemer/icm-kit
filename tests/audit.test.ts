@@ -351,6 +351,63 @@ describe('audit(): F5 LAYER_BLOAT (size + heading, not marker density)', () => {
   });
 });
 
+describe('audit(): F6 + W3 heuristic precision (#36)', () => {
+  it('F6 does NOT fire on a dash-qualified Process heading with content', () => {
+    // `—` is the em-dash, as a real CONTEXT.md heading carries it.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# r',
+        '01-x/CONTEXT.md':
+          '## Input\nx\n## Process — repeats at 1mo / 3mo / 6mo\ny\n## Output\nz\n## Completion\ndone',
+      }),
+    );
+    expect(rule(findings, 'MALFORMED_STAGE_CONTRACT')).toHaveLength(0);
+  });
+
+  it('F6 still fires when a section is genuinely missing, despite qualifiers elsewhere', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# r',
+        '01-x/CONTEXT.md':
+          '## Input — brief\nx\n## Output\nz\n## Completion\ndone',
+      }),
+    );
+    expect(
+      at(findings, 'MALFORMED_STAGE_CONTRACT', '01-x/CONTEXT.md')?.message,
+    ).toContain('Process');
+  });
+
+  // A dense, contiguous behaviour block: many directive markers, tightly packed.
+  const behaviourBlock =
+    '## Script\nAlways open warm. Never push. You must confirm the budget. ' +
+    'Do not hedge. Avoid jargon. Prefer short questions. You should mirror their tone.';
+
+  it('W3 does NOT fire on a transient leaf work file (a scripted call agenda)', () => {
+    // A per-item working file at depth: behaviour density is the deliverable.
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# r',
+        '02-scope/monday-call-agenda.md': `# Monday call agenda\n\n${behaviourBlock}`,
+      }),
+    );
+    expect(
+      findings.some((f) => f.path === '02-scope/monday-call-agenda.md'),
+    ).toBe(false);
+  });
+
+  it('W3 still fires on an always-loaded standing file mixing situational + behaviour', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# r',
+        'context/profile.md': `# Client profile\nBerlin-based, pays quarterly.\n\n${behaviourBlock}`,
+      }),
+    );
+    expect(
+      at(findings, 'MONOLITHIC_CONTEXT', 'context/profile.md')?.relatedRule,
+    ).toBe('CONTENT_SEGREGATION');
+  });
+});
+
 describe('audit(): F8 DUPLICATION (whole-workspace, §4.8)', () => {
   // A ~50-word voice paragraph, comfortably over the 40-token block floor.
   const voicePara =

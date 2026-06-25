@@ -16,7 +16,7 @@
  * version: bump it in lockstep with the SPEC.md title and §6 line on any
  * spec-touching change, so the audit banner never drifts from the spec.
  */
-export const SPEC_VERSION = 'v0.12' as const;
+export const SPEC_VERSION = 'v0.13' as const;
 
 // ---------------------------------------------------------------------------
 // Classification axes (SPEC §2.2 to §2.4)
