@@ -377,9 +377,32 @@ export interface StageContractCheck {
   readonly empty: string[];
 }
 
-/** True if a heading names a required section, tolerating case and a plural. */
+/**
+ * A trailing dash-qualifier on a heading: a spaced em-dash (U+2014) or en-dash
+ * (U+2013) and everything after it. Built from `\u` escapes so the source
+ * carries no literal em-dash (repo voice rule). A real stage heading often
+ * qualifies the bare section name (a `## Process` heading followed by an em-dash
+ * and a cadence note); the qualifier is annotation, not part of the section's
+ * identity (§2.6).
+ */
+const HEADING_QUALIFIER = /\s+[\u2013\u2014]\s+.*$/;
+
+/**
+ * The bare section name of a heading: lowercased, with a trailing dash-qualifier
+ * stripped, so a qualified `## Process` heading (an em-dash plus a repeat-cadence
+ * note) normalizes to `process` and still satisfies `Process` (SPEC §2.6, §4.6).
+ */
+function normalizeHeading(heading: string): string {
+  return heading.replace(HEADING_QUALIFIER, '').trim().toLowerCase();
+}
+
+/**
+ * True if a heading names a required section, tolerating case, a trailing dash-
+ * qualifier (a `## Process` heading with an em-dash note), and a trailing plural
+ * (`## Inputs`).
+ */
 function headingMatches(heading: string, name: string): boolean {
-  const h = heading.toLowerCase();
+  const h = normalizeHeading(heading);
   const n = name.toLowerCase();
   return h === n || h === `${n}s`;
 }

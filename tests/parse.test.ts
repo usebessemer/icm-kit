@@ -317,6 +317,30 @@ describe('parseStageContract', () => {
       empty: ['Process'],
     });
   });
+
+  it('strips a trailing dash-qualifier so a qualified heading still matches (#36)', () => {
+    // The heading data carries real em-dash (U+2014) and en-dash (U+2013)
+    // qualifiers, as production CONTEXT.md files do (cf. the dated-heading
+    // fixture in audit.test.ts); the parser must look past them.
+    const md =
+      '## Input — from prior stage\nx\n' +
+      '## Process — repeats at 1mo / 3mo / 6mo\ny\n' +
+      '## Output – the deliverables\nz\n' +
+      '## Completion\ndone';
+    expect(parseStageContract(md, STAGE_CONTRACT_SECTIONS)).toEqual({
+      missing: [],
+      empty: [],
+    });
+  });
+
+  it('still reports a genuinely missing section despite qualifiers elsewhere (#36)', () => {
+    const md =
+      '## Input — brief\nx\n## Output — artifacts\nz\n## Completion\ndone';
+    expect(parseStageContract(md, STAGE_CONTRACT_SECTIONS)).toEqual({
+      missing: ['Process'],
+      empty: [],
+    });
+  });
 });
 
 describe('proseBlocks (F8 segmentation, §4.8)', () => {
