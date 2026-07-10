@@ -1,4 +1,4 @@
-# ICM Spec: v0.14
+# ICM Spec: v0.15
 
 This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the two tools in `icm-kit`: `init`, which generates structures that satisfy the spec, and `audit`, which checks structures against it.
 
@@ -247,7 +247,109 @@ Explicitly deferred to later versions:
 
 ## 6. Versioning
 
-This is **SPEC v0.14**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence; v0.5 resolves F3 pointers within the load/skip cell, so a bare name qualifies against a same-cell directory token and a bare structural basename (`CONTEXT.md`, `CLAUDE.md`) is a placeholder, not a dangling pointer (§4.3); v0.6 adds the `DUPLICATION` failure mode (`F8`, §4.8), a whole-workspace check that flags the same substantive prose living in two separately-routed homes; v0.7 adds the `SUPERSEDED_BUT_LIVE` failure mode (`F9`, §4.9), a per-file check that flags a file still routed into a live home despite a superseded/deprecated banner near its top, and newline-normalizes input on read (CRLF to LF) so the §4.8 fence and heading scans are robust to Windows line endings; v0.8 adds the `KIT_BOILERPLATE` failure mode (`F7`, §4.7), the first rule to consult git history (it flags a file inherited from the workspace's fork-point commit and never adapted since), filling the previously reserved 4.7 slot so the failure-mode codes are now contiguous `F1` through `F9`; v0.9 normalizes F3 load/skip pointers before the existence test, resolving each candidate relative to the directory of its containing CLAUDE.md with `.`/`..` collapsed (so a nested workspace's cross-altitude `../../` and sibling `../` references resolve against the tree's normalized paths), and dedups F3 to one finding per stale pointer per CLAUDE.md (§4.3); v0.10 hardens F9 banner detection (§4.9) so the real AIOS dogfood shapes it under-caught now fire: the punctuation strip also consumes a leading emoji/variation-selector run (`> **⚠️ REFRAMED ...`), and a single-word marker trailed by a label-terminated ISO date is label-shaped (`SUPERSEDED 2026-06-01 by ...`, `REFRAMED 2026-06-03 (see ...)`), while a mid-line or below-cap supersession stays deferred as a section- vs file-level product call (§5); v0.11 exempts append-only logs from the F1 hard size signal (§4.1): a file whose body is a run of at least three dated entry headings (a decisions log, an async channel) is an accreting ledger that grows by design, so a size finding would be a false positive (the remedy is a tail-archive, not a split); v0.12 makes F2/W5 routability transitive (§2.5, §4.2): routability is now a whole-workspace reachability closure (seeded with today's per-file routing, then expanded by following the Markdown links of any routed file and the load/skip cells of a routed `CLAUDE.md`), so a file routed only by a routed pointer or index file's links is no longer mis-flagged as hidden, while a genuine orphan, and a dead, external, or `#anchor` link, route nothing; v0.13 sharpens two heuristics against AIOS dogfood false positives: F6/W7 (§4.6, §3) strips a trailing dash-qualifier (a spaced em-dash or en-dash and the text after it) before matching a stage-contract heading, so a qualified `## Process` heading carrying a repeat cadence satisfies `Process`, and the F1 soft signal / W3 (§4.1) exempts a transient leaf work file (a per-item `working` product such as a numbered-stage call agenda) whose intrinsic behaviour block is the deliverable, while an always-loaded standing file mixing content still fires; v0.14 sharpens F5 (§4.5) identity discrimination against the last AIOS dogfood false positive: identity-by-heading-shape now also recognises lead-contract / operating-model headings (`operating model`, `compartmentalisation`, the `what this ... is` self-definition shape), matched against the normalized whole heading (per §4.6), not by substring, so an oversized root operating-model / lead-contract block is contract prose rather than layer bloat, while a situational heading reusing a contract word (`## Operating model in practice`, `## Out of scope this sprint`) still fires when oversized, and catching the small below-cap ops stubs that restate a dedicated routed file stays deferred (§5). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+This is **SPEC v0.15**. The spec evolves alongside `init` and `audit`. Breaking changes to classifications, rule identifiers, or well-formedness criteria are minor version bumps (0.x). v0.2 added the `.memory/`, `.claude/skills/`, and stage-working-file rows to the §2.5 classification table; v0.3 scoped the F1 size check to UTF-8 text (binaries are no longer byte-estimated, §4.1); v0.4 broadens the stage-working-file row from `NN-name/*.md` (immediate children only) to `NN-name/**/*.md` (anywhere under the stage folder, so a stage subfolder such as `specs/` routes its work products at L2), with the stage-contract row staying immediate-parent and keeping precedence; v0.5 resolves F3 pointers within the load/skip cell, so a bare name qualifies against a same-cell directory token and a bare structural basename (`CONTEXT.md`, `CLAUDE.md`) is a placeholder, not a dangling pointer (§4.3); v0.6 adds the `DUPLICATION` failure mode (`F8`, §4.8), a whole-workspace check that flags the same substantive prose living in two separately-routed homes; v0.7 adds the `SUPERSEDED_BUT_LIVE` failure mode (`F9`, §4.9), a per-file check that flags a file still routed into a live home despite a superseded/deprecated banner near its top, and newline-normalizes input on read (CRLF to LF) so the §4.8 fence and heading scans are robust to Windows line endings; v0.8 adds the `KIT_BOILERPLATE` failure mode (`F7`, §4.7), the first rule to consult git history (it flags a file inherited from the workspace's fork-point commit and never adapted since), filling the previously reserved 4.7 slot so the failure-mode codes are now contiguous `F1` through `F9`; v0.9 normalizes F3 load/skip pointers before the existence test, resolving each candidate relative to the directory of its containing CLAUDE.md with `.`/`..` collapsed (so a nested workspace's cross-altitude `../../` and sibling `../` references resolve against the tree's normalized paths), and dedups F3 to one finding per stale pointer per CLAUDE.md (§4.3); v0.10 hardens F9 banner detection (§4.9) so the real AIOS dogfood shapes it under-caught now fire: the punctuation strip also consumes a leading emoji/variation-selector run (`> **⚠️ REFRAMED ...`), and a single-word marker trailed by a label-terminated ISO date is label-shaped (`SUPERSEDED 2026-06-01 by ...`, `REFRAMED 2026-06-03 (see ...)`), while a mid-line or below-cap supersession stays deferred as a section- vs file-level product call (§5); v0.11 exempts append-only logs from the F1 hard size signal (§4.1): a file whose body is a run of at least three dated entry headings (a decisions log, an async channel) is an accreting ledger that grows by design, so a size finding would be a false positive (the remedy is a tail-archive, not a split); v0.12 makes F2/W5 routability transitive (§2.5, §4.2): routability is now a whole-workspace reachability closure (seeded with today's per-file routing, then expanded by following the Markdown links of any routed file and the load/skip cells of a routed `CLAUDE.md`), so a file routed only by a routed pointer or index file's links is no longer mis-flagged as hidden, while a genuine orphan, and a dead, external, or `#anchor` link, route nothing; v0.13 sharpens two heuristics against AIOS dogfood false positives: F6/W7 (§4.6, §3) strips a trailing dash-qualifier (a spaced em-dash or en-dash and the text after it) before matching a stage-contract heading, so a qualified `## Process` heading carrying a repeat cadence satisfies `Process`, and the F1 soft signal / W3 (§4.1) exempts a transient leaf work file (a per-item `working` product such as a numbered-stage call agenda) whose intrinsic behaviour block is the deliverable, while an always-loaded standing file mixing content still fires; v0.14 sharpens F5 (§4.5) identity discrimination against the last AIOS dogfood false positive: identity-by-heading-shape now also recognises lead-contract / operating-model headings (`operating model`, `compartmentalisation`, the `what this ... is` self-definition shape), matched against the normalized whole heading (per §4.6), not by substring, so an oversized root operating-model / lead-contract block is contract prose rather than layer bloat, while a situational heading reusing a contract word (`## Operating model in practice`, `## Out of scope this sprint`) still fires when oversized, and catching the small below-cap ops stubs that restate a dedicated routed file stays deferred (§5); v0.15 adds the normative **§7 (Generation / the `init` template)**, the canonical workspace `init` emits, specified as the inverse of §2.5/§3/§4 so it classifies cleanly and audits to zero findings (the audit-green invariant): it pins the load-bearing root link-manifest routing rule, the role-less default and the minimal role shape, the neutral (dispositions-free) skeleton and the scaffolded-but-unwired `.memory/`, the non-git-initialized output (so F7 stays silent, §4.7), the install-level `references/` locality carve-out, the `begin`/session-start `handoff.md` fall-through, and the `identity/` routing resolution (routed by the root link-manifest, with promotion to a recognised §2.5 home deferred as a classifier change). The first stable spec lands as **1.0** when both `init` and `audit` ship end-to-end against it and a full workspace audit cycle has been run against a production system (AIOS) and a clean generated workspace.
+
+---
+
+## 7. Generation / the `init` template
+
+`init` generates a workspace; §7 specifies the canonical one it emits. Where §2.5, §3, and §4 read a workspace and classify or fault it, §7 is their inverse: it fixes the exact shape such that `classify()` finds every file compliant and `audit()` returns zero findings. §7 is normative for `init`; the generator (a later subtask) is correct exactly when its output satisfies this section.
+
+### 7.1 The audit-green invariant
+
+**`init`'s output is the canonical workspace: every well-formedness rule W1 to W7 holds and no failure mode F1 to F9 fires.** A freshly generated, un-ignited tree audits to zero findings. This is an invariant, not a target: any file `init` emits that would trip a rule is a defect in the template or in this spec, resolved (per the project's spec-driven discipline) by fixing the template or amending §7, never by exempting `init`'s output inside the audit runner. The rest of §7 is written to hold this invariant, and each home below notes the rules it must stay clear of.
+
+### 7.2 The generated layout
+
+The role-less default is the shape `init` emits when no role is selected:
+
+```
+CLAUDE.md            root identity + lead contract + role-routing table + link-manifest + session-start
+connections.md       external-connection registry (stub)
+README.md            human-facing orientation
+CONVENTIONS.md       working conventions, including the real audit command
+EXPANSIONS.md        how to grow the workspace (add a role, a channel, a stage)
+BOOTSTRAP.md         the ignition packet; self-deletes after the first session
+board/STATE.md       active-state board
+decisions/log.md     append-only decision log (stub)
+sync/protocol.md     async-coordination protocol
+channels/            async channel files (starter channel or index)
+identity/            operator-identity home; empty in the neutral default (.gitkeep)
+.memory/             recognised agent-memory home; scaffolded but unwired, empty (.gitkeep)
+archives/            retired-content home; walk-ignored, so the audit never reads it (.gitkeep)
+references/
+  agent-roles.md            the roles the lead contract points at
+  voice.md                  neutral-register placeholder
+  context-architecture.md   the ICM primer
+workspaces/          role workspaces; the role-less default holds only .gitkeep
+.claude/
+  settings.json             harness baseline
+  settings.local.json       per-operator stub
+.githooks/pre-commit  warn-mode altitude gate (runs audit, never blocks a commit)
+```
+
+Every generated Markdown home, with its classification (per §2.5) and how the audit reaches it:
+
+| Generated path | content_type | load_pattern | routing_level | Routed by |
+|---|---|---|---|---|
+| `CLAUDE.md` | identity (+ operations) | always | L0 | canonical, §2.5 row 1 |
+| `references/**/*.md` | reference | on_demand | L0 scope | canonical, §2.5 row 3 |
+| `.memory/**/*.md` (empty by default) | situational | always | L0 scope | canonical, §2.5 row 2b |
+| `workspaces/<role>/CLAUDE.md` (when a role is added) | identity | always | L1 | canonical, §2.5 row 1 (nested) |
+| `workspaces/<role>/context/**/*.md` (when a role is added) | situational | always | L1 | canonical, §2.5 row 2 |
+| `board/STATE.md`, `decisions/log.md`, `sync/protocol.md`, `channels/*.md`, `connections.md`, `README.md`, `CONVENTIONS.md`, `EXPANSIONS.md`, `identity/*.md` | unclassified (§2.5 last row) | n/a | n/a | routed, not hidden, by the root link-manifest (transitive routing, §2.5 / §4.2) |
+| `BOOTSTRAP.md` | unclassified | n/a | n/a | routed by a session-start prose link; never a table row |
+
+The substrate and documentation homes (`board/`, `decisions/`, `sync/`, `channels/`, `connections.md`, the three root docs, `identity/`) are not canonical §2.5 homes: the per-file classifier leaves each **unclassified in isolation** (the table's last row), and the transitive routing closure (§2.5, v0.12; §4.2) routes them from the root's link-manifest. This is deliberate: it keeps the §2.5 table and the classifier unchanged while `init`'s output stays fully routed. Because they are unclassified, they also fall outside the content-segregation (W3 / F1 soft), duplication (F8), superseded-banner (F9), and kit-boilerplate (F7) candidate sets, each of which skips unclassified files; the only rule they must satisfy is routability (W5 / F2), which the manifest supplies.
+
+Non-Markdown files (`.gitkeep`, `.claude/*.json`, `.githooks/pre-commit`) carry no classification and are not subject to F2: routability is a Markdown-only property (§4.2). `archives/` is walk-ignored by the workspace reader, so its contents never enter the audit at all.
+
+### 7.3 The root `CLAUDE.md` and the link-manifest rule
+
+The generated root is **thin**: an identity preamble, the L0 lead contract (a pointer to `references/agent-roles.md`, not the roles inlined), a role-routing table, a link-manifest, and a session-start handshake. It carries **no inlined knowledge and no voice**: the substance lives in the routed `references/` files, so the root stays under the F1 4,000-token `CLAUDE.md` cap and shares no duplicated block with any reference (F8).
+
+**The link-manifest rule (load-bearing).** `board/`, `decisions/`, `sync/`, `channels/`, `identity/`, and the root companions `connections.md`, `README.md`, `CONVENTIONS.md`, and `EXPANSIONS.md` are not canonical homes; each is **F2-hidden unless the root `CLAUDE.md` links it.** The generated root therefore MUST carry a complete link-manifest: a Markdown link that resolves to at least one file in every generated home, and, where a home holds several Markdown files, its entry or index file links the rest, so the F2 reachability closure (§4.2) reaches every generated Markdown file. The manifest links are **Markdown links, not a Load/Skip table**: this routes the homes for F2 while keeping F3 silent (F3 reads only Load/Skip-table cells), so a home file later renamed or removed leaves no dangling F3 pointer. The role-routing table is likewise not a Load/Skip table (it carries no combined Load-and-Skip header row, so F3 and F5 read no pointers from it) and names role workspaces by directory, never as a Load/Skip pointer into a child workspace, so F5 variant A stays silent. The whole manifest fits well within the 4,000-token budget.
+
+**The `begin` / session-start fall-through.** The generated session-start handshake (in the root, and in any role charter) references `handoff.md` conditionally, in prose: read `handoff.md` if it exists, otherwise fall through cleanly to the ACTIVE stage or the standing structure. `handoff.md` is never a Load/Skip pointer, so a fresh workspace with no handoff present neither dead-ends the agent on "read handoff.md first" nor trips F3.
+
+### 7.4 Substrate homes and the `identity/` resolution
+
+`board/STATE.md`, `decisions/log.md` (an append-only log stub, which the F1 hard size signal exempts once it accretes, §4.1), `sync/protocol.md`, and the `channels/` files are the coordination substrate; each is routed by the link-manifest (§7.3). `connections.md` is the root external-connection registry, routed the same way.
+
+`.memory/` is the recognised agent-memory home (§2.5 row 2b). `init` **scaffolds it but leaves it unwired**: it is generated empty (held by `.gitkeep`), because agent memory accretes at runtime, not at generation. An empty `.memory/` contributes no Markdown file and so no finding.
+
+**The `identity/` resolution.** `identity/` is a de-facto home that the §2.5 table does not recognise, and it is load-bearing in every real install. Rather than widen the classifier (a code change out of this spec-only step's scope, and one that would reclassify existing installs), §7 pins an explicit routing rule: **whenever `identity/` holds Markdown files, the root link-manifest links them** (the always-link-`identity/*` rule), routing them through the transitive closure exactly like the other substrate homes. In the neutral role-less default `identity/` is generated empty (`.gitkeep`), so the rule is vacuous until an operator adds identity content. Promoting `identity/` to a recognised `situational`/`identity` row in the §2.5 table (so the classifier routes it directly, independent of the manifest) is a reasonable future step; it is deferred here because it is a classifier change, and the link-manifest rule already keeps `init`'s output audit-green in the meantime.
+
+### 7.5 Shared references and the locality carve-out
+
+`references/` holds three install-level companions, all canonical `reference` files (on_demand, §2.5 row 3), all routed with no F2 finding:
+
+- `agent-roles.md`: the role definitions the root lead contract points at.
+- `voice.md`: a **neutral-register placeholder**. It is deliberately not a dense rules block: a real voice file packed with directives would trip the F1 soft signal / W3 (a `reference` carrying a behaviour block), so the generated placeholder states a neutral register and defers actual voice to the operator overlay (§7.8).
+- `context-architecture.md`: a short ICM primer.
+
+**The `references/` locality carve-out.** A future locality expectation ("push references down to where they are used; a reference stranded at the install root is a smell") is in tension with an install-level root `references/`. §7 states that these three install-level `references/` companions are **exempt** from that locality expectation: they are shared across every role by design, so a locality audit rule, if added later, must not false-positive on `init`'s own output.
+
+### 7.6 Role workspaces
+
+**Role-less default.** `init` emits `workspaces/` holding only `.gitkeep`: no role is assumed. A role is an opt-in expansion (documented in `EXPANSIONS.md`).
+
+**Minimal role shape.** When a role is added, its workspace is the minimal L1 shape: a `CLAUDE.md` charter and a `context/` home, and nothing else. `init` does **not** pre-build empty `references/` or `.claude/skills/` levels for a role; those are added only when the role needs them. A role `CLAUDE.md` is L1 in the parent frame (§2.2), its `context/**/*.md` is situational/always at L1, and routing depth stays at 2, well under the W6 limit of 3. The role charter's session-start handshake follows the same `begin` fall-through as the root (§7.3).
+
+### 7.7 Harness baseline, self-documenting docs, and the ignition packet
+
+**Harness baseline.** `init` emits `.claude/settings.json` (the harness baseline), a `.claude/settings.local.json` stub (per-operator), and a `.githooks/pre-commit` altitude gate that runs the audit in **warn mode**: it reports findings but never blocks a commit. All three are non-Markdown and generate no audit finding.
+
+**Self-documenting docs.** `CONVENTIONS.md` records the working conventions, including the **real audit command** (the actual `audit` invocation for this workspace, not a bare-binary placeholder). `EXPANSIONS.md` documents how to grow the workspace (add a role, a channel, a stage contract). `README.md` is human-facing orientation. All three are routed by the link-manifest (§7.3).
+
+**The ignition packet.** `BOOTSTRAP.md` is the one-shot ignition packet. It is routed by a **Markdown link in the root's session-start prose only, never a Load/Skip-table row.** While present it is reachable, so F2 is clear; it is designed to **self-delete after the first session**, and because nothing in a table points at it, its deletion leaves no dangling F3 pointer, only an inert dead prose link that routes nothing (§4.2). That is why the packet is prose-linked rather than table-routed.
+
+### 7.8 Generation guarantees
+
+Two properties hold across the whole generated tree:
+
+- **Non-git-initialised (`tracked: false`).** `init` emits a plain directory tree; it does **not** run `git init`. Every file therefore reads as off-repo, so F7 (`KIT_BOILERPLATE`), which needs git history from a fork-point commit, stays silent on a genuinely fresh install (§4.7). Initialising git is the operator's first act, and from that point the workspace's own history, not `init`'s, is what F7 reads.
+- **Neutral skeleton.** The generated workspace is behaviourally neutral: no personality, voice rules, or behavioural dispositions are baked in. Those are an opt-in **operator-profile overlay** applied after generation, not part of the skeleton. This keeps the neutral `voice.md` placeholder clear of the F1 soft signal / W3 and keeps `init`'s output identical for every operator until they choose to specialise it.
 
 ---
 
