@@ -164,6 +164,27 @@ describe('isIdentityHeading', () => {
     expect(isIdentityHeading('iMessage operations')).toBe(false);
     expect(isIdentityHeading('Email workflow')).toBe(false);
   });
+
+  // v0.14: lead-contract / operating-model headings are identity by shape, so an
+  // oversized block under one is contract prose, not F5 layer bloat (SPEC §4.5).
+  it('recognises lead-contract / operating-model headings (whole-heading shape)', () => {
+    expect(isIdentityHeading('L0 operating model (the role contract)')).toBe(true);
+    expect(isIdentityHeading('What this is')).toBe(true);
+    expect(isIdentityHeading('Compartmentalization')).toBe(true);
+    // A leading enumerator (splitSections keeps `6. `) and a dash-qualifier
+    // normalize away, as they do for the F6 stage-contract match.
+    expect(isIdentityHeading('6. Operating model')).toBe(true);
+  });
+
+  it('does not exempt situational headings that merely reuse a contract word', () => {
+    expect(isIdentityHeading('Operating model in practice (daily run loop)')).toBe(
+      false,
+    );
+    expect(isIdentityHeading('Out of scope this sprint')).toBe(false);
+    expect(isIdentityHeading('Lead (current) status')).toBe(false);
+    expect(isIdentityHeading('Compartmentalization steps')).toBe(false);
+    expect(isIdentityHeading('What this means for the sprint')).toBe(false);
+  });
 });
 
 describe('hasBehaviourBlock (density-normalised, F1 soft / W3)', () => {
