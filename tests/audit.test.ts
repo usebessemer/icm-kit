@@ -326,6 +326,28 @@ describe('audit(): F5 LAYER_BLOAT (size + heading, not marker density)', () => {
     expect(rule(findings, 'LAYER_BLOAT')).toHaveLength(0);
   });
 
+  it('does NOT fire on an oversized lead-contract / operating-model block (v0.14)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## L0 operating model (the role contract)\n' + 'word '.repeat(700),
+      }),
+    );
+    expect(rule(findings, 'LAYER_BLOAT')).toHaveLength(0);
+  });
+
+  it('still fires on an oversized situational block reusing a contract word (v0.14)', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md':
+          '## Operating model in practice (daily run loop)\n' + 'word '.repeat(700),
+      }),
+    );
+    expect(at(findings, 'LAYER_BLOAT', 'CLAUDE.md')?.message).toContain(
+      'Operating model in practice',
+    );
+  });
+
   it('does NOT fire on the permitted load/skip table', () => {
     const findings = audit(
       buildWorkspace({

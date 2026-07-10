@@ -322,13 +322,49 @@ const IDENTITY_HEADING =
   /\b(identity|voice|tone|conventions?|persona|principles?|modes?|role|who (we|you) are|style guide|about (us|me|you))\b/i;
 
 /**
+ * Lead-contract / operating-model headings that are identity by shape, not by an
+ * `IDENTITY_HEADING` keyword: a root's operating model, its compartmentalisation
+ * boundary, and its self-definition (`what this ... is`) are the root's identity,
+ * so an oversized block under one of them is contract prose, not layer bloat
+ * (SPEC §4.5, v0.14). Matched against the whole normalized heading, never a
+ * substring: a situational heading reusing a contract word (`## Operating model
+ * in practice`, `## Out of scope this sprint`, `### Lead (current) status`) is
+ * shape-distinct and stays eligible to fire. The optional `l\d+ ` prefix admits
+ * a leading altitude token (`L0 operating model`).
+ */
+const IDENTITY_HEADING_CONTRACT =
+  /^(l\d+ )?(operating model|compartmentali[sz]ation|what (this|it)( \w+){0,2} is)$/i;
+
+/**
+ * Normalize a heading to its bare contract name for `IDENTITY_HEADING_CONTRACT`:
+ * drop a leading enumerator (`splitSections` keeps `6. ` from `## 6. ...`), one
+ * trailing parenthetical, and a trailing dash-qualifier (a spaced em-dash U+2014
+ * or en-dash U+2013 and everything after it, mirroring §4.6 / F6). The dashes are
+ * `\u` escapes so the source carries no literal em-dash (repo voice rule).
+ */
+function normalizeContractHeading(heading: string): string {
+  return heading
+    .trim()
+    .replace(/^\d+\.\s*/, '')
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .replace(/\s*[\u2013\u2014]\s+.*$/, '')
+    .trim();
+}
+
+/**
  * True when a section heading reads as identity content. Coarse and heading-
  * based on purpose: marker density cannot tell legitimate directive-dense
  * identity (voice rules) from a directive-dense ops manual, so F5 keys off the
- * heading instead (SPEC §4.5, v0.1 limitation).
+ * heading instead (SPEC §4.5, v0.1 limitation). The contract vocabulary is
+ * anchored to the whole normalized heading (§4.6-style), not matched as a
+ * substring, so a situational heading reusing a contract word still fires
+ * (SPEC §4.5, v0.14).
  */
 export function isIdentityHeading(heading: string): boolean {
-  return IDENTITY_HEADING.test(heading);
+  return (
+    IDENTITY_HEADING.test(heading) ||
+    IDENTITY_HEADING_CONTRACT.test(normalizeContractHeading(heading))
+  );
 }
 
 /** Behavioural / identity directive markers: the shape of `identity` content. */
