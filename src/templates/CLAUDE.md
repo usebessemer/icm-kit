@@ -32,7 +32,7 @@ Before you stop, record any decision worth keeping in [`decisions/log.md`](decis
 |---|---|---|
 | Orient / what's live | [`board/STATE.md`](board/STATE.md), [`board/registry.md`](board/registry.md) | Per-thread detail |
 | Act on a thread | that thread's [`workspaces/<thread>/`](workspaces/) `CLAUDE.md` | Other threads |
-| Who the operator is / priorities | [`context/`](workspaces/) | Reference docs |
+| Who the operator is / priorities | a thread's [`context/` home](workspaces/) | Reference docs |
 | Draft as the operator | [`references/voice.md`](references/voice.md), [`identity/email-workflow.md`](identity/email-workflow.md) | Board |
 | The role / context model | [`references/agent-roles.md`](references/agent-roles.md), [`references/context-architecture.md`](references/context-architecture.md) | Per-thread detail |
 | Decisions & why | [`decisions/log.md`](decisions/log.md) | - |
