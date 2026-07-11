@@ -1,0 +1,17 @@
+#!/bin/sh
+# Altitude gate (warn mode).
+#
+# Runs the ICM structure audit before each commit and reports any findings,
+# but never blocks the commit: a warn-mode gate keeps the workspace honest
+# without getting in the way. To make it blocking, remove the final `exit 0`
+# and let the audit's own non-zero exit stop the commit.
+#
+# Wire it up once with:  git config core.hooksPath .githooks
+
+if command -v icm-kit >/dev/null 2>&1; then
+  icm-kit audit || echo "icm-kit: audit reported findings (warn mode: commit not blocked)."
+else
+  echo "icm-kit not found on PATH; skipping the altitude gate."
+fi
+
+exit 0
