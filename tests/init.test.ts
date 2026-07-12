@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
@@ -18,6 +19,8 @@ import {
   writeWorkspace,
   type GeneratedFile,
 } from '../src/init.js';
+import { audit } from '../src/audit.js';
+import { readWorkspace } from '../src/workspace.js';
 
 /**
  * The generator is the inverse of the reader: it resolves the §7.2 template
@@ -170,4 +173,229 @@ describe('writeWorkspace(): the default disk writer (criteria 2, 8)', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Subtask 4: the v1.0 audit-green gate (SPEC §7.1)
+//
+// The empirical form of the §7.1 invariant: a freshly generated, un-ignited tree
+// audits to zero findings. Each case generates into an off-repo tmp dir (so the
+// reader's NO_GIT defaults apply and F7 stays silent, §7.8), audits it, and
+// asserts no finding survives. A structure-completeness assertion pins every
+// §7.2 path; an end-to-end CLI case and a gate-from-the-built-dist case prove
+// the same invariant through the wired tool and through the published artifact.
+// ---------------------------------------------------------------------------
+
+const repoRoot = join(here, '..');
+const tsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
+
+/**
+ * Every path `init` emits, POSIX-relative, pinned to subtask 2's golden tree
+ * (`git ls-files src/templates`, 30 files). A named constant so subtask 5 can
+ * reuse it and so a generator that silently drops or adds a file fails here.
+ */
+const GENERATED_PATHS = [
+  '.claude/settings.json',
+  '.claude/settings.local.json',
+  '.claude/skills/triage/SKILL.md',
+  '.claude/skills/weekly-review/SKILL.md',
+  '.githooks/pre-commit',
+  '.memory/.gitkeep',
+  'BOOTSTRAP.md',
+  'CLAUDE.md',
+  'CONVENTIONS.md',
+  'EXPANSIONS.md',
+  'README.md',
+  'archives/README.md',
+  'board/STATE.md',
+  'board/registry.md',
+  'channels/catch-up.md',
+  'channels/inbox.md',
+  'channels/l0-handoff.md',
+  'channels/l1-to-l0.md',
+  'channels/l1-to-l1.md',
+  'channels/sync-log.md',
+  'connections.md',
+  'decisions/log.md',
+  'identity/decision-boundary.md',
+  'identity/email-workflow.md',
+  'references/_template.md',
+  'references/agent-roles.md',
+  'references/context-architecture.md',
+  'references/voice.md',
+  'sync/protocol.md',
+  'workspaces/.gitkeep',
+].sort();
+
+/** The committed template count PR #51 (subtask 2) shipped; a drop must fail. */
+const TEMPLATE_FILE_COUNT = 30;
+
+/**
+ * `archives/` is walk-ignored by the reader (SPEC §7.2, §2.5), so its file never
+ * enters the audit and never appears in `readWorkspace().tree`; it is asserted
+ * on the raw fs path instead. Every other generated file is walked.
+ */
+const WALK_IGNORED_PATHS = new Set(['archives/README.md']);
+const WALKED_PATHS = GENERATED_PATHS.filter((p) => !WALK_IGNORED_PATHS.has(p));
+
+/** Every file on disk under `dir`, POSIX-relative, sorted (no ignore list). */
+function walkDiskPaths(dir: string, root = dir): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const abs = join(dir, entry);
+    if (statSync(abs).isDirectory()) out.push(...walkDiskPaths(abs, root));
+    else out.push(relative(root, abs).split(sep).join('/'));
+  }
+  return out.sort();
+}
+
+interface CliResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+function run(bin: string, args: string[]): CliResult {
+  try {
+    const stdout = execFileSync(bin, args, { cwd: repoRoot, encoding: 'utf8' });
+    return { status: 0, stdout, stderr: '' };
+  } catch (err) {
+    const e = err as { status?: number; stdout?: string; stderr?: string };
+    return { status: e.status ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+  }
+}
+
+/** Run the CLI from source through tsx (mirrors tests/cli.test.ts). */
+function runFromSource(args: string[]): CliResult {
+  return run(tsx, ['src/cli.ts', ...args]);
+}
+
+/** Run the built CLI through node (the gate-from-dist path). */
+function runFromDist(args: string[]): CliResult {
+  return run(process.execPath, ['dist/cli.js', ...args]);
+}
+
+/** Create a fresh off-repo tmp dir, run `fn` against it, always clean it up. */
+function inTmp(fn: (dir: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), 'icm-init-'));
+  try {
+    fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('init: the pinned template tree (§7.2)', () => {
+  it('ships exactly the committed golden template count (no silent drop)', () => {
+    // PR #51 (subtask 2) shipped 29 files instead of 30 because a global
+    // gitignore (`**/.claude/settings.local.json`) blocked `git add` while the
+    // author's local on-disk audit passed. Pin the committed count so a silent
+    // global-ignore drop is impossible to miss (refs #51).
+    const committed = execFileSync('git', ['ls-files', 'src/templates'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter(Boolean);
+    expect(committed).toHaveLength(TEMPLATE_FILE_COUNT);
+  });
+
+  it('pins GENERATED_PATHS to the on-disk template tree', () => {
+    // The hardcoded pin must equal what subtask 2 actually emits; a template
+    // added or removed forces a conscious update here and to the count above.
+    expect(GENERATED_PATHS).toEqual([...templatePaths].sort());
+    expect(GENERATED_PATHS).toHaveLength(TEMPLATE_FILE_COUNT);
+  });
+});
+
+describe('init: the v1.0 audit-green gate (§7.1)', () => {
+  it('generates a role-less default that audits to zero findings (in-process)', () => {
+    inTmp((dir) => {
+      writeWorkspace(dir);
+      // No git init and no forkPoint: the tree reads off-repo (tracked: false),
+      // so F7 stays silent by the reader's NO_GIT defaults (§7.8).
+      const findings = audit(readWorkspace(dir));
+      // On failure surface the offending file+rule so a regression is named.
+      expect(findings, JSON.stringify(findings, null, 2)).toHaveLength(0);
+    });
+  });
+
+  it('generates a --role example workspace that audits to zero findings', () => {
+    inTmp((dir) => {
+      // The minimal role adds workspaces/example/CLAUDE.md (a thin L1 charter)
+      // and an empty context/ home; both must audit clean (SPEC §7.6).
+      writeWorkspace(dir, { role: 'example' });
+      const findings = audit(readWorkspace(dir));
+      expect(findings, JSON.stringify(findings, null, 2)).toHaveLength(0);
+    });
+  });
+
+  it('emits every SPEC §7.2 path (structure completeness)', () => {
+    inTmp((dir) => {
+      writeWorkspace(dir);
+      const tree = readWorkspace(dir).tree;
+      // Every walked path is present in the read tree and on disk...
+      for (const p of WALKED_PATHS) {
+        expect(tree, `missing from read tree: ${p}`).toContain(p);
+        expect(existsSync(join(dir, ...p.split('/'))), `missing on disk: ${p}`).toBe(
+          true,
+        );
+      }
+      // ...and the read tree holds exactly that set: no extra, none missing.
+      expect([...tree].sort()).toEqual(WALKED_PATHS);
+      // archives/ is walk-ignored: on disk, but never in the tree (never audited).
+      expect(tree).not.toContain('archives/README.md');
+      expect(existsSync(join(dir, 'archives', 'README.md'))).toBe(true);
+      // All 30 golden files land on disk (the tree omits only archives/).
+      expect(walkDiskPaths(dir)).toEqual(GENERATED_PATHS);
+      // identity/ ships POPULATED, not held by a .gitkeep: both files non-empty.
+      for (const p of ['identity/decision-boundary.md', 'identity/email-workflow.md']) {
+        expect(statSync(join(dir, ...p.split('/'))).size).toBeGreaterThan(0);
+      }
+    });
+  });
+});
+
+describe('init: end-to-end through the CLI (§7.1)', () => {
+  it('init then audit reports zero findings from source (tsx, exit 0)', () => {
+    inTmp((dir) => {
+      const init = runFromSource(['init', dir]);
+      expect(init.status, init.stderr).toBe(0);
+      const result = runFromSource(['audit', dir]);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        'No findings: workspace is ICM-compliant against SPEC',
+      );
+    });
+  }, 20000);
+
+  it('a bad --role fails cleanly with exit 1 and no stack trace', () => {
+    inTmp((dir) => {
+      const { status, stderr } = runFromSource(['init', dir, '--role', '../evil']);
+      expect(status).toBe(1);
+      expect(stderr).toContain('invalid role name');
+      // Clean stderr, not an unhandled InvalidRoleError stack dump (error boundary).
+      expect(stderr).not.toMatch(/\n\s+at /);
+    });
+  }, 20000);
+});
+
+describe('init: the gate from the built dist (durable packaging fix)', () => {
+  it('builds, then a built CLI init+audit yields 30 files and zero findings', () => {
+    // The rest of the suite runs tsx-from-source, so a dist-packaging gap (tsc
+    // copies no templates) stays invisible; this case runs the BUILT CLI, so a
+    // build that cannot init fails here rather than at a user's install (refs #52).
+    execFileSync('npm', ['run', 'build'], { cwd: repoRoot, encoding: 'utf8' });
+    inTmp((dir) => {
+      const init = runFromDist(['init', dir]);
+      expect(init.status, init.stderr).toBe(0);
+      expect(walkDiskPaths(dir)).toEqual(GENERATED_PATHS);
+      expect(walkDiskPaths(dir)).toHaveLength(TEMPLATE_FILE_COUNT);
+      const result = runFromDist(['audit', dir]);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        'No findings: workspace is ICM-compliant against SPEC',
+      );
+    });
+  }, 120000);
 });
