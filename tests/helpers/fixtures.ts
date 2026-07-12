@@ -8,9 +8,11 @@
  * runner's concern (issue #4), not the classifier's.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeWorkspace } from '../../src/init.js';
 import type { Workspace, WorkspaceFile } from '../../src/workspace.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +59,31 @@ export function buildWorkspace(
     }
   }
   return { root: '/virtual', files, tree, claudeMd };
+}
+
+/** A generated golden tree and the cleanup that removes it. */
+export interface GeneratedWorkspace {
+  /** Absolute path of the off-repo tmp dir holding init's output. */
+  readonly root: string;
+  /** Remove the tmp dir; call in an `afterAll`. */
+  readonly cleanup: () => void;
+}
+
+/**
+ * Generate init's golden output (SPEC §7) into a fresh off-repo tmp dir and
+ * return its root plus a cleanup. This is the single realisation of "init's
+ * clean output" the audit and reader tests consume: the only committed copy of
+ * the bytes is `src/templates/` (the pin test asserts the generated tree matches
+ * it), so there is no second tree to drift.
+ *
+ * Off-repo is load-bearing: the tmp dir is outside any git work tree, so the
+ * reader's NO_GIT defaults apply (`tracked: false`) and F7/KIT_BOILERPLATE stays
+ * silent, which is what lets the tree audit to zero findings (SPEC §7.1, §7.8).
+ */
+export function generateGoldenWorkspace(): GeneratedWorkspace {
+  const root = mkdtempSync(join(tmpdir(), 'icm-golden-'));
+  writeWorkspace(root);
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 /** Inputs to `classify()`, mirroring the SPEC §2.5 signature. */
