@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { audit } from './audit.js';
 import { readWorkspace } from './workspace.js';
+import { NonEmptyTargetError, writeWorkspace } from './init.js';
 import { SPEC_VERSION } from './model.js';
 import type { Finding } from './model.js';
 
@@ -11,14 +12,34 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('0.16.0');
+  .version('0.17.0');
 
 program
   .command('init')
-  .description('Scaffold a new ICM-compliant workspace (not yet implemented)')
-  .action(() => {
-    console.log('init: not yet implemented');
-    process.exit(1);
+  .description('Scaffold a new ICM-compliant workspace')
+  .argument('[target]', 'directory to scaffold into', '.')
+  .option('--overwrite', 'write into a non-empty target instead of refusing it')
+  .option('--role <name>', 'also scaffold a minimal L1 role workspace (§7.6)')
+  .action((target: string, options: { overwrite?: boolean; role?: string }) => {
+    const root = resolve(target);
+    try {
+      const written = writeWorkspace(root, {
+        overwrite: options.overwrite,
+        role: options.role,
+      });
+      console.log(`Scaffolded ${written.length} file(s) into ${root}.`);
+      const roleNote = options.role ? ` with role "${options.role}"` : '';
+      console.log(`ICM-compliant workspace ready${roleNote}. Run icm-kit audit to verify.`);
+    } catch (err) {
+      // A non-empty target is a user error, not a crash: print to stderr and set
+      // a non-zero exit code rather than surface an unhandled stack trace.
+      if (err instanceof NonEmptyTargetError) {
+        console.error(`init: ${err.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      throw err;
+    }
   });
 
 program
