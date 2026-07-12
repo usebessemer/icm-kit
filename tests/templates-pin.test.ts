@@ -12,14 +12,22 @@ import { fileURLToPath } from 'node:url';
 import { writeWorkspace } from '../src/init.js';
 
 /**
- * The one-source-of-truth pin (subtask 5).
+ * Generator-output fidelity pin (subtask 5).
  *
- * init's clean output is not committed as a second tree; it is generated from
- * `src/templates/` at runtime (the audit and reader tests consume the generated
- * form). This pin regenerates the tree into an off-repo tmp dir and asserts it
- * is `src/templates/` byte-for-byte, so the generator and the golden bytes can
- * never silently diverge: a dropped file, an added file, a changed byte, or a
- * stray CRLF that survives generation all redden here.
+ * init's clean output is not committed as a second tree; the generator emits it
+ * from `src/templates/` at runtime (the audit and reader tests consume the
+ * generated form). This pin regenerates the tree to disk and asserts
+ * `writeWorkspace()` reproduces `src/templates/` exactly: the same path-set (no
+ * file dropped, invented, or renamed by the generator) with LF-normalised bytes
+ * (no CR survives generation).
+ *
+ * Scope, stated honestly: this verifies the GENERATOR, not that `src/templates/`
+ * is unchanged. `writeWorkspace()` reads its bytes live from `src/templates/`, so
+ * editing a template moves both sides of the comparison together and does NOT
+ * redden this pin (a compliance-breaking template edit is caught instead by the
+ * audit-green gate). What reddens here is a generator-logic regression: a walk
+ * that skips or invents a file, a change to the emitted path-set, or a transform
+ * that mangles bytes or reintroduces CRLF.
  *
  * The comparison LF-normalises the on-disk template before matching, because the
  * generator LF-normalises on read (SPEC §7.1); the separate `\r` assertion pins

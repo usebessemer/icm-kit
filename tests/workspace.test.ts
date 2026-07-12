@@ -56,8 +56,38 @@ describe('readWorkspace()', () => {
 
   it('marks a Markdown file as text', () => {
     // init's golden tree ships no .txt, so isText is exercised against a routed
-    // Markdown file, which is always UTF-8 text.
+    // Markdown file here; the load-bearing "text regardless of extension" case
+    // lives in the hand-built nested-lineage block below.
     expect(ws.files.find((f) => f.path === 'references/voice.md')?.isText).toBe(true);
+  });
+});
+
+describe('readWorkspace(): nested lineage and non-Markdown text (hand-built tree)', () => {
+  // init's golden tree is single-CLAUDE.md and .md-only, so it cannot exercise
+  // two reader capabilities: walking a real on-disk NESTED workspace into a
+  // multi-key claudeMd lineage, and flagging a UTF-8 file as text REGARDLESS of
+  // extension (a .txt). A committed fixture is unnecessary for this: build a
+  // minimal nested tree in a temp dir and read it through the production path.
+  it('captures a nested CLAUDE.md in the lineage and marks a .txt as text', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'icm-nested-'));
+    try {
+      writeFileSync(join(dir, 'CLAUDE.md'), '# Root identity\n');
+      mkdirSync(join(dir, 'subws'));
+      writeFileSync(join(dir, 'subws', 'CLAUDE.md'), '# Nested identity\n');
+      writeFileSync(join(dir, 'notes.txt'), 'plain text, not markdown\n');
+
+      const ws = readWorkspace(dir);
+      // Multi-key lineage: both the root and the nested CLAUDE.md, POSIX-keyed.
+      expect([...ws.claudeMd.keys()].sort()).toEqual(['CLAUDE.md', 'subws/CLAUDE.md']);
+      expect(ws.claudeMd.get('subws/CLAUDE.md')).toContain('Nested identity');
+      expect(ws.tree).toContain('subws/CLAUDE.md');
+      // Text is a NUL-byte sniff, not an extension allowlist: a .txt is text.
+      const notes = ws.files.find((f) => f.path === 'notes.txt');
+      expect(notes?.isText).toBe(true);
+      expect(notes?.bytes).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
