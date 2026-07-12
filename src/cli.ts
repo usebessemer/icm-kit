@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { audit } from './audit.js';
 import { readWorkspace } from './workspace.js';
-import { NonEmptyTargetError, writeWorkspace } from './init.js';
+import { InvalidRoleError, NonEmptyTargetError, writeWorkspace } from './init.js';
 import { SPEC_VERSION } from './model.js';
 import type { Finding } from './model.js';
 
@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('0.17.0');
+  .version('0.18.0');
 
 program
   .command('init')
@@ -31,14 +31,19 @@ program
       const roleNote = options.role ? ` with role "${options.role}"` : '';
       console.log(`ICM-compliant workspace ready${roleNote}. Run icm-kit audit to verify.`);
     } catch (err) {
-      // A non-empty target is a user error, not a crash: print to stderr and set
-      // a non-zero exit code rather than surface an unhandled stack trace.
-      if (err instanceof NonEmptyTargetError) {
+      // Every init failure is user-facing, not a crash: report it on stderr and
+      // set a non-zero exit code rather than surface an unhandled stack trace.
+      if (err instanceof NonEmptyTargetError || err instanceof InvalidRoleError) {
+        // Known user errors: the message is already actionable as-is.
         console.error(`init: ${err.message}`);
-        process.exitCode = 1;
-        return;
+      } else {
+        // Anything else (e.g. a template-resolution failure from a build that
+        // never copied dist/templates) still fails cleanly rather than dumping a
+        // trace; flag it as unexpected so it is not mistaken for a user mistake.
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`init failed: ${message}`);
       }
-      throw err;
+      process.exitCode = 1;
     }
   });
 
