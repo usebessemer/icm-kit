@@ -10,6 +10,10 @@ import {
   DEFAULT_THRESHOLDS,
   STAGE_CONTRACT_SECTIONS,
   STAGE_FOLDER_PATTERN,
+  SPEC_VERSION,
+  PROJECTION_RULES,
+  PROJECTION_HOMES,
+  PROJECTION_HOME_RULE,
 } from '../src/model.js';
 
 /**
@@ -111,5 +115,66 @@ describe('stage contracts (SPEC §2.6, W7)', () => {
     expect('references').not.toMatch(STAGE_FOLDER_PATTERN);
     expect('1-discovery').not.toMatch(STAGE_FOLDER_PATTERN);
     expect('01').not.toMatch(STAGE_FOLDER_PATTERN);
+  });
+});
+
+describe('spec version (SPEC §6)', () => {
+  it('tracks the SPEC.md document version', () => {
+    expect(SPEC_VERSION).toBe('v1.1');
+  });
+});
+
+describe('projection layer (SPEC §8.2)', () => {
+  it('encodes the five projection rules', () => {
+    expect(PROJECTION_RULES).toEqual([
+      'pass_through',
+      'shape_only',
+      'redact_instance',
+      'omit',
+      'omit_assert_absence',
+    ]);
+  });
+
+  it('encodes the projection homes in §8.2 first-match order (secret first)', () => {
+    expect(PROJECTION_HOMES).toEqual([
+      'secret',
+      'router',
+      'skill',
+      'harness',
+      'companion',
+      'sync',
+      'archive',
+      'memory',
+      'context',
+      'voice',
+      'reference',
+      'instance_record',
+    ]);
+  });
+
+  it('binds each home to the rule the §8.2 table assigns it', () => {
+    expect(PROJECTION_HOME_RULE).toEqual({
+      router: 'pass_through',
+      skill: 'pass_through',
+      harness: 'pass_through',
+      companion: 'pass_through',
+      sync: 'pass_through',
+      secret: 'omit_assert_absence',
+      archive: 'omit',
+      memory: 'shape_only',
+      context: 'shape_only',
+      voice: 'shape_only',
+      reference: 'pass_through',
+      instance_record: 'redact_instance',
+    });
+  });
+
+  it('maps every home to a known rule, and covers every home', () => {
+    expect(Object.keys(PROJECTION_HOME_RULE).sort()).toEqual(
+      [...PROJECTION_HOMES].sort(),
+    );
+    for (const rule of Object.values(PROJECTION_HOME_RULE)) {
+      expect(PROJECTION_RULES).toContain(rule);
+    }
   });
 });
