@@ -1,20 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { audit } from '../src/audit.js';
 import { readWorkspace } from '../src/workspace.js';
 import { DEFAULT_THRESHOLDS } from '../src/model.js';
 import type { Finding } from '../src/model.js';
-import { buildWorkspace } from './helpers/fixtures.js';
+import { buildWorkspace, generateGoldenWorkspace } from './helpers/fixtures.js';
 
 /**
- * Audit-runner tests. The `clean` fixture run is the no-false-positives guard;
- * the `aios-mirror` run is the honest real-shapes reproduction (#11). In-memory
+ * Audit-runner tests. The golden-output run is the no-false-positives guard: a
+ * freshly generated `init` tree must audit to zero findings (SPEC §7.1). The
+ * `aios-mirror` run is the honest real-shapes reproduction (#11). In-memory
  * cases pin each rule, including the false positives the #11 review surfaced.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const cleanRoot = join(here, 'fixtures', 'clean');
 const aiosRoot = join(here, 'fixtures', 'aios-mirror');
 
 function rule(findings: Finding[], code: string): Finding[] {
@@ -31,14 +31,47 @@ function paths(findings: Finding[], code: string): string[] {
     .sort();
 }
 
-describe('audit(): no false positives on the clean fixture', () => {
-  const findings = audit(readWorkspace(cleanRoot));
+describe("audit(): no false positives on init's golden output (SPEC §7.1)", () => {
+  // The no-false-positives guard runs against init's actual output, not a
+  // hand-built stand-in: generate the golden tree (§7) into an off-repo tmp dir
+  // and audit it. Off-repo means the reader's NO_GIT defaults apply, so F7 stays
+  // silent (§7.8) and the tree is genuinely audit-green. src/templates/ is the
+  // one committed copy of these bytes; the pin test (templates-pin.test.ts)
+  // catches any drift between the generator and the golden tree.
+  let findings: Finding[];
+  let cleanup: () => void;
+  beforeAll(() => {
+    const golden = generateGoldenWorkspace();
+    cleanup = golden.cleanup;
+    findings = audit(readWorkspace(golden.root));
+  });
+  afterAll(() => cleanup());
 
-  it('flags only the two intentionally unrouted files, as HIDDEN_CONTEXT', () => {
-    expect(findings.map((f) => ({ rule: f.rule, path: f.path }))).toEqual([
-      { rule: 'HIDDEN_CONTEXT', path: 'loose/extra.md' },
-      { rule: 'HIDDEN_CONTEXT', path: 'orphan.md' },
-    ]);
+  it('audits to zero findings (audit-green)', () => {
+    // On failure surface the offending file+rule so a regression is named.
+    expect(findings, JSON.stringify(findings, null, 2)).toEqual([]);
+  });
+});
+
+describe('audit(): F2 HIDDEN_CONTEXT on unrouted files (the relocated fixture control)', () => {
+  // The clean fixture used to carry two intentional orphans (`loose/extra.md`,
+  // `orphan.md`) as the negative control proving F2 fires; that control cannot
+  // live in init's audit-green output, so it moves here in-memory. Two
+  // independent unrouted files, one nested in an undeclared folder and one at
+  // the root, with a root identity that routes neither: both must flag, and only
+  // those two. (Distinct from the pointer-routing cases below, which each pair a
+  // routed home with a single orphan.)
+  it('flags every unrouted .md, at its path, and nothing else', () => {
+    const findings = audit(
+      buildWorkspace({
+        'CLAUDE.md': '# Root identity\n\nThin root; work routes through named homes.',
+        'loose/extra.md': '# Extra\n\nUnrouted content in an undeclared folder.',
+        'orphan.md': '# Orphan\n\nUnrouted content at the root.',
+      }),
+    );
+    expect(paths(findings, 'HIDDEN_CONTEXT')).toEqual(['loose/extra.md', 'orphan.md']);
+    // The control is specifically about F2: nothing else fires on this tree.
+    expect(findings.every((f) => f.rule === 'HIDDEN_CONTEXT')).toBe(true);
   });
 });
 
