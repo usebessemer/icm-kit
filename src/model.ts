@@ -21,7 +21,7 @@
  * v1.0 and diverge again only when the package version moves ahead on a
  * non-spec PR.
  */
-export const SPEC_VERSION = 'v1.0' as const;
+export const SPEC_VERSION = 'v1.1' as const;
 
 // ---------------------------------------------------------------------------
 // Classification axes (SPEC §2.2 to §2.4)
@@ -263,3 +263,93 @@ export const STAGE_CONTRACT_SECTIONS = [
   'Completion',
 ] as const;
 export type StageContractSection = (typeof STAGE_CONTRACT_SECTIONS)[number];
+
+// ---------------------------------------------------------------------------
+// Projection layer for `sanitize` (SPEC §8)
+// ---------------------------------------------------------------------------
+
+/**
+ * What `sanitize`'s projection does to a file when it emits the shareable tree
+ * (SPEC §8.2). One per projection home. The transforms themselves land in a
+ * later subtask; this enum is only the classification of intent:
+ *
+ * - `pass_through`: emit the file verbatim (it carries no private instance).
+ * - `shape_only`: keep the structure (headings, section shape), drop the
+ *   instance-specific prose.
+ * - `redact_instance`: keep the file but redact instance-identifying values.
+ * - `omit`: drop the file from the output entirely.
+ * - `omit_assert_absence`: drop the file AND assert the output contains no
+ *   trace of it (the secrets guarantee).
+ */
+export const PROJECTION_RULES = [
+  'pass_through',
+  'shape_only',
+  'redact_instance',
+  'omit',
+  'omit_assert_absence',
+] as const;
+export type ProjectionRule = (typeof PROJECTION_RULES)[number];
+
+/**
+ * The projection home a file is assigned to (SPEC §8.2). Homes are named by
+ * where the file sits and what it holds, at a finer grain than `classify()`'s
+ * four content types: `classify()` calls both `references/voice.md` and every
+ * other `references/**` file `reference`, but the projection splits `voice`
+ * out as its own home because `sanitize` shapes it (§8.3). Listed in the
+ * first-match order of the SPEC §8.2 rule table.
+ */
+export const PROJECTION_HOMES = [
+  'router',
+  'skill',
+  'harness',
+  'companion',
+  'sync',
+  'secret',
+  'archive',
+  'memory',
+  'context',
+  'voice',
+  'reference',
+  'instance_record',
+] as const;
+export type ProjectionHome = (typeof PROJECTION_HOMES)[number];
+
+/**
+ * The single projection rule each home carries (SPEC §8.2). This map is the
+ * one place a home binds to its rule, so the classifier never restates a rule
+ * inline and the SPEC §8.2 table and this file cannot drift (the "spec wins on
+ * disagreement" discipline, mirroring `IMPLIED_LOAD_PATTERN`).
+ */
+export const PROJECTION_HOME_RULE: Record<ProjectionHome, ProjectionRule> = {
+  router: 'pass_through',
+  skill: 'pass_through',
+  harness: 'pass_through',
+  companion: 'pass_through',
+  sync: 'pass_through',
+  secret: 'omit_assert_absence',
+  archive: 'omit',
+  memory: 'shape_only',
+  context: 'shape_only',
+  voice: 'shape_only',
+  reference: 'pass_through',
+  instance_record: 'redact_instance',
+};
+
+/**
+ * The result of projecting one file path for `sanitize` (SPEC §8.2):
+ *
+ *   classifyProjection(file_path, workspace_tree, claude_md_contents)
+ *     -> { path, home, rule, unclassified }
+ *
+ * A file that matches no rule in the §8.2 table is `unclassified` (its `home`
+ * and `rule` are null): a distinct fail-closed signal the caller treats as a
+ * hard error, never a silent pass-through (SPEC §8.2 final row).
+ */
+export interface ProjectionClassification {
+  /** Path relative to the workspace root, POSIX-separated (SPEC §8.2). */
+  readonly path: string;
+  readonly home: ProjectionHome | null;
+  readonly rule: ProjectionRule | null;
+  /** True when no §8.2 rule matched: fail closed, a hard error downstream. */
+  readonly unclassified: boolean;
+}
