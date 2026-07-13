@@ -1,6 +1,6 @@
 {
   "name": "icm-kit",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Tooling for the Interpretable Context Methodology: workspace scaffolder and linter.",
   "type": "module",
   "bin": {
@@ -8,17 +8,20 @@
   },
   "files": [
     "dist",
+    "dist/templates",
     "SPEC.md",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:templates",
+    "build:templates": "node scripts/copy-templates.mjs",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src tests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=20"

@@ -1,8 +1,8 @@
 /**
  * The ICM rule model.
  *
- * This module is the TypeScript encoding of SPEC.md (SPEC v0.3). It is the
- * single source both `init` and `audit` consume: the classification axes
+ * This module is the TypeScript encoding of SPEC.md (see `SPEC_VERSION`). It is
+ * the single source both `init` and `audit` consume: the classification axes
  * (SPEC §2.2 to §2.4), the classification result shape (§2.5), the
  * well-formedness rules (§3), and the failure modes (§4).
  *
@@ -10,6 +10,18 @@
  * clause in SPEC.md. When the spec and this file disagree, the spec wins and
  * this file is the bug.
  */
+
+/**
+ * The SPEC.md version this code implements: the one in-code home for the spec
+ * version. It tracks the SPEC.md document and moves only on a spec-touching
+ * change, in lockstep with the SPEC.md title and §6 line, so the audit banner
+ * never drifts from the spec. The package/tool version (package.json,
+ * cli.ts `.version`) carries the per-PR release trail instead: it may advance
+ * on a code- or test-only PR while SPEC_VERSION holds. The two converge at
+ * v1.0 and diverge again only when the package version moves ahead on a
+ * non-spec PR.
+ */
+export const SPEC_VERSION = 'v1.0' as const;
 
 // ---------------------------------------------------------------------------
 // Classification axes (SPEC §2.2 to §2.4)
@@ -136,7 +148,13 @@ export type WellFormednessCode =
 export const SEVERITIES = ['warning', 'error'] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
-/** Stable identifiers for the failure-mode lint rules (SPEC §4). */
+/**
+ * Stable identifiers for the failure-mode lint rules (SPEC §4).
+ *
+ * The codes are contiguous `F1` through `F9`, in section order (SPEC §4 intro).
+ * `F7` (`KIT_BOILERPLATE`) is the first rule to consult git history. Each code
+ * is bound to its rule by name, never by position.
+ */
 export const FAILURE_MODES = {
   F1: 'MONOLITHIC_CONTEXT',
   F2: 'HIDDEN_CONTEXT',
@@ -144,6 +162,9 @@ export const FAILURE_MODES = {
   F4: 'OVER_ROUTING',
   F5: 'LAYER_BLOAT',
   F6: 'MALFORMED_STAGE_CONTRACT',
+  F7: 'KIT_BOILERPLATE',
+  F8: 'DUPLICATION',
+  F9: 'SUPERSEDED_BUT_LIVE',
 } as const;
 
 export type FailureModeId = keyof typeof FAILURE_MODES;
@@ -181,6 +202,14 @@ export interface Thresholds {
   readonly layerBloatProseTokens: number;
   /** OVER_ROUTING / W6 maximum routing depth (§2.2, §4.4). */
   readonly maxRoutingDepth: number;
+  /** DUPLICATION Jaccard floor for a duplicate block pair (§4.8). */
+  readonly duplicationSimilarityFloor: number;
+  /** DUPLICATION minimum block size to compare, in tokens (§4.8). */
+  readonly duplicationMinBlockTokens: number;
+  /** DUPLICATION word-shingle size for the Jaccard comparison (§4.8). */
+  readonly duplicationShingleSize: number;
+  /** SUPERSEDED_BUT_LIVE top-region scan depth, in lines (§4.9). */
+  readonly supersededBannerScanLines: number;
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
@@ -188,6 +217,10 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   fileMaxTokens: 8_000,
   layerBloatProseTokens: 500,
   maxRoutingDepth: 3,
+  duplicationSimilarityFloor: 0.8,
+  duplicationMinBlockTokens: 40,
+  duplicationShingleSize: 5,
+  supersededBannerScanLines: 15,
 };
 
 // ---------------------------------------------------------------------------

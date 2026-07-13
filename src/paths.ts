@@ -22,9 +22,45 @@ export function baseName(path: string): string {
   return i === -1 ? path : path.slice(i + 1);
 }
 
+/**
+ * Collapse `.` and `..` segments in a POSIX-relative path. Pure string
+ * normalization, no filesystem access: a candidate joined from a nested
+ * CLAUDE.md's directory (`workspaces/x/../../context/f.md`) reduces to the
+ * normalized tree entry (`context/f.md`) so a membership test can match. A
+ * leading `..` that escapes the path root is preserved: such a path lies outside
+ * the workspace and so resolves to nothing in the tree (SPEC §4.3).
+ */
+export function normalizePosix(path: string): string {
+  const out: string[] = [];
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..' && out.length > 0 && out[out.length - 1] !== '..') {
+      out.pop();
+      continue;
+    }
+    out.push(segment);
+  }
+  return out.join('/');
+}
+
 /** True for a Markdown path (case-insensitive `.md`). */
 export function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith('.md');
+}
+
+/**
+ * Folder names that hold retired content. A file under one of these is not
+ * "live": it is excluded from live-routing checks (the F8 DUPLICATION candidate
+ * set, §4.8, and F9 SUPERSEDED_BUT_LIVE, §4.9). `archives` is also in the
+ * workspace walker's `IGNORED_NAMES`, so on a real disk walk such files never
+ * reach the audit at all; this shared helper covers in-memory trees and keeps
+ * the two homes' definition in one place.
+ */
+export const ARCHIVE_HOMES: ReadonlySet<string> = new Set(['archives']);
+
+/** True when any path segment is an archive home (retired content). */
+export function isUnderArchive(path: string): boolean {
+  return path.split('/').some((segment) => ARCHIVE_HOMES.has(segment));
 }
 
 /** The directory of every `CLAUDE.md` in the tree: one per workspace root. */

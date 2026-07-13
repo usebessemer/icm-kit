@@ -8,19 +8,38 @@
  * runner's concern (issue #4), not the classifier's.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeWorkspace } from '../../src/init.js';
 import type { Workspace, WorkspaceFile } from '../../src/workspace.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Synthetic git provenance for `buildWorkspace`, keyed by path. Each entry sets
+ * the KIT_BOILERPLATE (§4.7) facts a real `readGitInfo` would resolve; omitted
+ * fields and omitted paths default to off-repo (`tracked: false`), so a fixture
+ * never fires F7 unless it opts in. This is the test seam: the committed
+ * fixtures live in icm-kit's own git history, so a real fork point cannot be
+ * faked there, and F7's git signal is injected here instead.
+ */
+export type SyntheticGit = Record<
+  string,
+  Partial<Pick<WorkspaceFile, 'tracked' | 'postForkCommits' | 'existedAtForkPoint'>>
+>;
+
+/**
  * Build an in-memory Workspace from a `path -> content` map, for rule tests
  * that need a precise tree without committing fixture directories. Mirrors the
- * shape `readWorkspace` produces.
+ * shape `readWorkspace` produces. The optional `git` map injects per-path
+ * provenance for KIT_BOILERPLATE (§4.7); paths default to off-repo.
  */
-export function buildWorkspace(contents: Record<string, string>): Workspace {
+export function buildWorkspace(
+  contents: Record<string, string>,
+  git: SyntheticGit = {},
+): Workspace {
   const files: WorkspaceFile[] = Object.keys(contents)
     .sort()
     .map((path) => ({
@@ -28,6 +47,9 @@ export function buildWorkspace(contents: Record<string, string>): Workspace {
       content: contents[path],
       bytes: Buffer.byteLength(contents[path], 'utf8'),
       isText: true,
+      tracked: git[path]?.tracked ?? false,
+      postForkCommits: git[path]?.postForkCommits ?? null,
+      existedAtForkPoint: git[path]?.existedAtForkPoint ?? false,
     }));
   const tree = files.map((f) => f.path);
   const claudeMd = new Map<string, string>();
@@ -37,6 +59,31 @@ export function buildWorkspace(contents: Record<string, string>): Workspace {
     }
   }
   return { root: '/virtual', files, tree, claudeMd };
+}
+
+/** A generated golden tree and the cleanup that removes it. */
+export interface GeneratedWorkspace {
+  /** Absolute path of the off-repo tmp dir holding init's output. */
+  readonly root: string;
+  /** Remove the tmp dir; call in an `afterAll`. */
+  readonly cleanup: () => void;
+}
+
+/**
+ * Generate init's golden output (SPEC §7) into a fresh off-repo tmp dir and
+ * return its root plus a cleanup. This is the single realisation of "init's
+ * clean output" the audit and reader tests consume: the only committed copy of
+ * the bytes is `src/templates/` (the pin test asserts the generated tree matches
+ * it), so there is no second tree to drift.
+ *
+ * Off-repo is load-bearing: the tmp dir is outside any git work tree, so the
+ * reader's NO_GIT defaults apply (`tracked: false`) and F7/KIT_BOILERPLATE stays
+ * silent, which is what lets the tree audit to zero findings (SPEC §7.1, §7.8).
+ */
+export function generateGoldenWorkspace(): GeneratedWorkspace {
+  const root = mkdtempSync(join(tmpdir(), 'icm-golden-'));
+  writeWorkspace(root);
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 /** Inputs to `classify()`, mirroring the SPEC §2.5 signature. */
