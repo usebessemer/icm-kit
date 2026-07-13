@@ -12,11 +12,16 @@
  */
 
 /**
- * The SPEC.md version this code implements. The one in-code home for the spec
- * version: bump it in lockstep with the SPEC.md title and §6 line on any
- * spec-touching change, so the audit banner never drifts from the spec.
+ * The SPEC.md version this code implements: the one in-code home for the spec
+ * version. It tracks the SPEC.md document and moves only on a spec-touching
+ * change, in lockstep with the SPEC.md title and §6 line, so the audit banner
+ * never drifts from the spec. The package/tool version (package.json,
+ * cli.ts `.version`) carries the per-PR release trail instead: it may advance
+ * on a code- or test-only PR while SPEC_VERSION holds. The two converge at
+ * v1.0 and diverge again only when the package version moves ahead on a
+ * non-spec PR.
  */
-export const SPEC_VERSION = 'v0.19' as const;
+export const SPEC_VERSION = 'v1.0' as const;
 
 // ---------------------------------------------------------------------------
 // Classification axes (SPEC §2.2 to §2.4)

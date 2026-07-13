@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('0.19.0');
+  .version('1.0.0');
 
 program
   .command('init')
