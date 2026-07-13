@@ -167,8 +167,12 @@ You surface options and draft; the operator decides. Keep this charter thin: rou
  * directory or a file at the path) is refused. This is a read of the target
  * only; it never writes, so the assembly path stays disk-free with a capturing
  * writer against a non-existent target.
+ *
+ * Exported so `sanitize` reuses the same fresh-tree guard for its `--out`
+ * directory (never in-place, mirroring `init`), rather than re-implementing it
+ * (SPEC §8, subtask 2).
  */
-function guardTarget(target: string, overwrite: boolean): void {
+export function guardTarget(target: string, overwrite: boolean): void {
   if (overwrite) return;
   let stat;
   try {
@@ -181,8 +185,15 @@ function guardTarget(target: string, overwrite: boolean): void {
   }
 }
 
-/** The default seam: create each parent directory and write UTF-8 LF bytes. */
-const defaultWriter: FileWriter = (target, files) => {
+/**
+ * The default seam: create each parent directory and write UTF-8 LF bytes.
+ *
+ * Exported as the one output-tree writer both `init` and `sanitize` write
+ * through: `sanitize` emits its projected `GeneratedFile[]` with the exact same
+ * bytes-to-disk behaviour, so there is no second writer to drift (SPEC §8,
+ * subtask 2).
+ */
+export const defaultWriter: FileWriter = (target, files) => {
   for (const file of files) {
     const abs = join(target, ...file.path.split('/'));
     mkdirSync(dirname(abs), { recursive: true });
