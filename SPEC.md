@@ -376,34 +376,34 @@ Every file is assigned exactly one **projection home**, and every home carries e
 - **`omit`**: drop the file from the output entirely.
 - **`omit_assert_absence`**: drop the file **and** assert the output contains no trace of it (the secrets guarantee).
 
-Homes and rules are assigned by the following table, **matched in order, first match wins**. Path predicates are POSIX-relative from the workspace root.
+Homes and rules are assigned by the following table, **matched in order, first match wins**. The **secret** rule is row 1: it takes priority over every structural home, so a secret can never be shadowed (§8.3). Rows 1 to 8 match on the path from the projection root, or on a basename. Rows 9 to 13 are **workspace-home** rows, matched on the path relative to the file's **nearest enclosing workspace root**, the same frame `classify()` uses (§2.2), so an ICM or record home *inside a nested workspace* is recognised rather than failed closed.
 
-| # | Predicate (POSIX-relative from workspace root) | Home | Rule |
+| # | Predicate | Home | Rule |
 |---|---|---|---|
-| 1 | any `CLAUDE.md` (by basename; root or a nested workspace) | `router` | `pass_through` |
-| 2 | `.claude/skills/<slug>/SKILL.md` | `skill` | `pass_through` |
-| 3 | any other `.claude/**` (hooks, harness config) | `harness` | `pass_through` |
-| 4 | root companions by basename: `CONVENTIONS.md`, `EXPANSIONS.md`, `connections.md`, `README.md` | `companion` | `pass_through` |
-| 5 | `settings.json` / `settings.local.json` (by basename) | `harness` | `pass_through` |
-| 6 | `sync/**` (e.g. `sync/protocol.md`) | `sync` | `pass_through` |
-| 7 | secrets-shaped: `**/.env*`, `secrets/**`, `**/*token*`, `**/*credential*` (case-insensitive, basename) | `secret` | `omit_assert_absence` |
+| 1 | secrets-shaped: `**/.env*`, `secrets/**`, `**/*token*`, `**/*credential*` (case-insensitive, basename) | `secret` | `omit_assert_absence` |
+| 2 | any `CLAUDE.md` (by basename; root or a nested workspace) | `router` | `pass_through` |
+| 3 | `.claude/skills/<slug>/SKILL.md` | `skill` | `pass_through` |
+| 4 | any other `.claude/**` (hooks, harness config) | `harness` | `pass_through` |
+| 5 | root companions by basename, **root-anchored**: `CONVENTIONS.md`, `EXPANSIONS.md`, `connections.md`, `README.md` | `companion` | `pass_through` |
+| 6 | root `settings.json` / `settings.local.json` (by basename, **root-anchored**) | `harness` | `pass_through` |
+| 7 | `sync/**` (e.g. `sync/protocol.md`) | `sync` | `pass_through` |
 | 8 | `archives/**` (any path segment `archives`; also dropped by the reader's `IGNORED_NAMES` / `isUnderArchive`) | `archive` | `omit` |
-| 9 | `.memory/**/*.md` | `memory` | `shape_only` |
-| 10 | `context/**/*.md` | `context` | `shape_only` |
-| 11 | exact path `references/voice.md` | `voice` | `shape_only` |
-| 12 | `references/**/*.md` (all other) | `reference` | `pass_through` |
-| 13 | `board/**`, `registry.md`, `decisions/**` (incl. `log.md`), `channels/**` | `instance_record` | `redact_instance` |
+| 9 | `.memory/**/*.md` (workspace-relative) | `memory` | `shape_only` |
+| 10 | `context/**/*.md` (workspace-relative) | `context` | `shape_only` |
+| 11 | workspace-relative path `references/voice.md` | `voice` | `shape_only` |
+| 12 | `references/**/*.md`, all other (workspace-relative) | `reference` | `pass_through` |
+| 13 | `board/**`, `registry.md`, `decisions/**` (incl. `log.md`), `channels/**` (workspace-relative) | `instance_record` | `redact_instance` |
 | — | anything matching no rule above | null | `unclassified` (fail closed; a hard error downstream) |
 
 The final row is the **fail-closed** guarantee: a file matching no rule is `unclassified` (its home and rule are null), a distinct signal the caller treats as a hard error, never a silent pass-through. The `ProjectionHome` and `ProjectionRule` unions and the home-to-rule map in the rule model mirror this table exactly (the "spec wins on disagreement" discipline, as the `W#` / `F#` maps do for §3 / §4).
 
 ### 8.3 Notes on the harder rows
 
-- **The `voice` split.** `references/voice.md` is projected `shape_only` (home `voice`) while every other `references/**/*.md` is `pass_through` (home `reference`). Both are `reference` to `classify()`, so this split is `sanitize`'s own. v1 is the exact named path; it generalizes to a configurable personal-reference list later (not built now).
+- **Secrets match first (highest priority).** The secret rule is row 1, ahead of every structural home, so a secret can **never** be shadowed by an earlier match: a `.env` under `.claude/`, or a `*token*` / `*credential*` file that also sits in a companion or `sync/` home, is `secret` (`omit_assert_absence`), not the structural home's `pass_through`. Over-omission is the safe failure direction for a privacy tool. The classification is defined and tested here; the enforcement (the omit plus the assert-absent-from-output) lands in a later subtask.
+- **The `*token*` / `*credential*` pattern is deliberately broad.** Because secrets match first, a legitimately-named document (`api-token.md`, `credential-rotation.md`) is classified `secret` and omitted. This over-omission is intentional and **never silent**: the projection manifest (a later subtask) surfaces every omitted file with its rule, so a human sees `omitted: secret-shaped` and can re-include the prose. A future refinement can narrow the pattern; until then the broad, fail-safe pattern is the v1 stance.
+- **The `voice` split.** `references/voice.md` is projected `shape_only` (home `voice`) while every other `references/**/*.md` is `pass_through` (home `reference`). Both are `reference` to `classify()`, so this split is `sanitize`'s own. v1 is the exact workspace-relative path (so each nested workspace's own `voice.md` is shaped); it generalizes to a configurable personal-reference list later (not built now).
 - **Explicit `archive` omit.** `archives/**` emits an explicit `omit` even though the workspace reader already drops it (its `IGNORED_NAMES` / `isUnderArchive`, §4.8), so the behaviour is tested and explicit at the classifier, not merely incidental to the walk. Which files the projection walk actually visits is a later subtask; the classifier still names any archive path `omit` when it sees one.
-- **Secrets are the strongest rule.** A secrets-shaped path (a dotenv file `**/.env*`, a `*token*` or `*credential*` basename, or anything under a `secrets/` directory at any depth, matched case-insensitively) is `omit_assert_absence`. The classification is defined and tested here; the enforcement (the omit plus the assert-absent-from-output) lands in a later subtask.
 - **`instance_record` is the hardest home.** `board/**`, `registry.md`, `decisions/**` (including `log.md`), and `channels/**` carry live workspace instance state and are projected `redact_instance`. The redaction *depth* is a genuine open decision; §8 only classifies these paths into the bucket, and the transform and its depth are a later subtask.
-- **First-match-wins ordering has consequences.** Because `.claude/**` (row 3) precedes the secret, settings, and instance rows, a secret-named or settings file living under `.claude/` is homed `harness` (`pass_through`), not `secret`; and because the companion, sync, secret, and archive rows precede the Markdown ICM homes, a companion-basename or secrets-shaped Markdown file is homed by the earlier row. This is by design: the table is a single ordered pass, and the fail-closed final row is the safety net for anything unnamed.
 
 ---
 

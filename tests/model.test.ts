@@ -135,14 +135,14 @@ describe('projection layer (SPEC §8.2)', () => {
     ]);
   });
 
-  it('encodes the projection homes in §8.2 first-match order', () => {
+  it('encodes the projection homes in §8.2 first-match order (secret first)', () => {
     expect(PROJECTION_HOMES).toEqual([
+      'secret',
       'router',
       'skill',
       'harness',
       'companion',
       'sync',
-      'secret',
       'archive',
       'memory',
       'context',

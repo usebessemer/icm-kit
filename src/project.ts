@@ -31,7 +31,13 @@ import {
   SKILL_FILE,
 } from './model.js';
 import type { ProjectionClassification, ProjectionHome } from './model.js';
-import { baseName, dirOf, isMarkdown, isUnderArchive } from './paths.js';
+import {
+  baseName,
+  dirOf,
+  isMarkdown,
+  isUnderArchive,
+  pathWithinWorkspace,
+} from './paths.js';
 
 /** The Claude-Code harness home; every file under it is harness (SPEC §8.2). */
 const HARNESS_HOME = '.claude';
@@ -60,10 +66,13 @@ const VOICE_FILE = `${CANONICAL_HOMES.reference}/voice.md`;
 /**
  * Classify one file path for `sanitize`'s projection (SPEC §8.2).
  *
- * @param filePath  Path relative to the workspace root, POSIX-separated.
- * @param tree      Every file path in the workspace; passed through to
- *                  `classify()` for the Markdown ICM homes (SPEC §8.2 rows
- *                  9 to 12).
+ * @param filePath  Path relative to the projection root, POSIX-separated. The
+ *                  workspace-home rows (9 to 13) re-derive the file's
+ *                  nearest-enclosing-workspace-relative path internally, so a
+ *                  home inside a nested workspace is recognised (SPEC §2.2).
+ * @param tree      Every file path in the projection tree; used to locate the
+ *                  nearest workspace root and passed to `classify()` for the
+ *                  Markdown ICM homes.
  * @param claudeMd  `CLAUDE.md` contents keyed by tree path (the lineage), used
  *                  by `classify()` the same way.
  */
@@ -76,34 +85,48 @@ export function classifyProjection(
 
   // ---- SPEC §8.2 rule table, matched in order, first match wins ----
 
-  // Row 1: any CLAUDE.md (root or a nested workspace) -> router.
+  // Row 1: secrets-shaped paths -> secret. Highest priority: a secret must
+  // never be shadowed by a structural home (a `.env` under `.claude/`, a
+  // `*token*` doc under a companion or sync home), so this precedes every other
+  // row. The fail-closed omit + absence assertion is enforced in a later
+  // subtask; here we only classify.
+  if (isSecretShaped(filePath)) return home('secret', filePath);
+
+  // Row 2: any CLAUDE.md (root or a nested workspace) -> router.
   if (base === ROOT_IDENTITY_FILE) return home('router', filePath);
 
-  // Row 2: .claude/skills/<slug>/SKILL.md -> skill.
+  // Row 3: .claude/skills/<slug>/SKILL.md -> skill.
   if (isSkillFile(filePath)) return home('skill', filePath);
 
-  // Row 3: any other .claude/** file (hooks, harness config) -> harness. This
-  // precedes the secret and settings rows, so a settings.json or a secret-named
-  // file living under .claude/ is homed here (still pass_through).
+  // Row 4: any other .claude/** file (hooks, harness config) -> harness.
   if (isUnderDir(filePath, HARNESS_HOME)) return home('harness', filePath);
 
-  // Row 4: root companion docs, by basename -> companion.
-  if (ROOT_COMPANIONS.has(base)) return home('companion', filePath);
+  // Row 5: root companion docs, by basename, root-anchored -> companion. A
+  // nested `workspaces/.../README.md` is not a companion: it routes by its
+  // location below, or fails closed (SPEC §8.2 row 5).
+  if (dirOf(filePath) === '' && ROOT_COMPANIONS.has(base)) {
+    return home('companion', filePath);
+  }
 
-  // Row 5: settings.json / settings.local.json (outside .claude/) -> harness.
-  if (HARNESS_SETTINGS.has(base)) return home('harness', filePath);
+  // Row 6: root settings.json / settings.local.json, root-anchored -> harness.
+  // (A settings file under .claude/ is already caught by row 4.)
+  if (dirOf(filePath) === '' && HARNESS_SETTINGS.has(base)) {
+    return home('harness', filePath);
+  }
 
-  // Row 6: sync/** -> sync.
+  // Row 7: sync/** -> sync.
   if (isUnderDir(filePath, 'sync')) return home('sync', filePath);
-
-  // Row 7: secrets-shaped paths -> secret (the fail-closed omit + absence
-  // assertion, enforced in a later subtask).
-  if (isSecretShaped(filePath)) return home('secret', filePath);
 
   // Row 8: archives/** -> archive. Named explicitly even though the workspace
   // reader already drops archives (its IGNORED_NAMES / isUnderArchive), so the
   // omit is tested and explicit, not merely incidental to the walk (SPEC §8.3).
   if (isUnderArchive(filePath)) return home('archive', filePath);
+
+  // Rows 9 to 13 are workspace-home rows: they match on the path relative to
+  // the file's nearest enclosing workspace root, the same frame classify() uses
+  // (SPEC §2.2), so an ICM home or record home inside a nested workspace is
+  // recognised rather than failed closed.
+  const relPath = pathWithinWorkspace(filePath, tree);
 
   // Rows 9 to 12: the Markdown ICM homes. classify() (SPEC §2.5) supplies the
   // base content type; the projection splits it finer (SPEC §8.3): `.memory/`
@@ -115,19 +138,19 @@ export function classifyProjection(
     const icm = classify(filePath, tree, claudeMd);
     if (icm.contentType === 'situational') {
       // Row 9
-      if (isUnderDir(filePath, CANONICAL_HOMES.memory)) {
+      if (isUnderDir(relPath, CANONICAL_HOMES.memory)) {
         return home('memory', filePath);
       }
       // Row 10
-      if (isUnderDir(filePath, CANONICAL_HOMES.situational)) {
+      if (isUnderDir(relPath, CANONICAL_HOMES.situational)) {
         return home('context', filePath);
       }
     }
     if (icm.contentType === 'reference') {
       // Row 11
-      if (filePath === VOICE_FILE) return home('voice', filePath);
+      if (relPath === VOICE_FILE) return home('voice', filePath);
       // Row 12
-      if (isUnderDir(filePath, CANONICAL_HOMES.reference)) {
+      if (isUnderDir(relPath, CANONICAL_HOMES.reference)) {
         return home('reference', filePath);
       }
     }
@@ -136,7 +159,7 @@ export function classifyProjection(
   // Row 13: instance-scoped coordination records -> instance_record (the
   // redaction depth is a later subtask; here we only get the paths into the
   // right bucket, SPEC §8.3).
-  if (isInstanceRecord(filePath)) return home('instance_record', filePath);
+  if (isInstanceRecord(relPath)) return home('instance_record', filePath);
 
   // Final row: anything matching no rule fails closed. Never a silent
   // pass-through: the caller treats this as a hard error (SPEC §8.2).

@@ -299,12 +299,12 @@ export type ProjectionRule = (typeof PROJECTION_RULES)[number];
  * first-match order of the SPEC §8.2 rule table.
  */
 export const PROJECTION_HOMES = [
+  'secret',
   'router',
   'skill',
   'harness',
   'companion',
   'sync',
-  'secret',
   'archive',
   'memory',
   'context',
@@ -321,12 +321,12 @@ export type ProjectionHome = (typeof PROJECTION_HOMES)[number];
  * disagreement" discipline, mirroring `IMPLIED_LOAD_PATTERN`).
  */
 export const PROJECTION_HOME_RULE: Record<ProjectionHome, ProjectionRule> = {
+  secret: 'omit_assert_absence',
   router: 'pass_through',
   skill: 'pass_through',
   harness: 'pass_through',
   companion: 'pass_through',
   sync: 'pass_through',
-  secret: 'omit_assert_absence',
   archive: 'omit',
   memory: 'shape_only',
   context: 'shape_only',

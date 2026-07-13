@@ -10,20 +10,25 @@ import { buildWorkspace } from './helpers/fixtures.js';
 
 /**
  * Tests for the SPEC §8.2 projection classifier. They walk every row of the
- * first-match-wins rule table against one synthetic tree, plus the fail-closed
- * unclassified path and the `references/voice.md`-vs-other-`references/` split.
- * No redaction here: `shape_only`/`redact_instance` produce nothing yet, they
- * are only classifications (subtask 2 builds the transforms).
+ * first-match-wins rule table (secret first) against one synthetic tree that
+ * includes a nested workspace, plus the fail-closed unclassified path and the
+ * `references/voice.md`-vs-other-`references/` split. No redaction here:
+ * `shape_only` / `redact_instance` produce nothing yet, they are only
+ * classifications (subtask 2 builds the transforms).
  */
 
-// One tree covering every §8.2 rule row. buildWorkspace registers the two
-// CLAUDE.md files as the lineage; the rest classify by path.
+// One tree covering every §8.2 rule row. The `workspaces/oss/` block is a
+// nested workspace (the AIOS shape: each role owns its own context/references/
+// .memory/board), so the workspace-home rows (9 to 13) are exercised in a
+// nested frame, not only at the root. buildWorkspace registers both CLAUDE.md
+// files as the lineage.
 const ws = buildWorkspace({
+  // root workspace
   'CLAUDE.md': '# Root',
-  'workspaces/writer/CLAUDE.md': '# Writer role',
   '.claude/skills/summarize/SKILL.md': '# Summarize skill',
   '.claude/hooks/pre-commit.js': '// hook',
   '.claude/settings.json': '{}',
+  '.claude/.env': 'SECRET=0',
   'CONVENTIONS.md': 'conventions',
   'EXPANSIONS.md': 'expansions',
   'connections.md': 'connections',
@@ -31,6 +36,7 @@ const ws = buildWorkspace({
   'settings.json': '{}',
   'settings.local.json': '{}',
   'sync/protocol.md': 'sync protocol',
+  'sync/rotate-token.md': 'a token rotation note',
   '.env': 'SECRET=1',
   '.env.local': 'SECRET=2',
   'secrets/key.pem': 'private key',
@@ -49,6 +55,14 @@ const ws = buildWorkspace({
   'channels/general.md': 'a channel',
   'notes.txt': 'a stray non-md file',
   'random/data.md': 'a stray md file in no home',
+  // nested workspace: homes live under workspaces/<role>/
+  'workspaces/oss/CLAUDE.md': '# OSS role',
+  'workspaces/oss/context/state.md': 'nested situational',
+  'workspaces/oss/.memory/note.md': 'nested memory',
+  'workspaces/oss/references/guide.md': 'nested reference',
+  'workspaces/oss/references/voice.md': 'nested voice',
+  'workspaces/oss/board/STATE.md': 'nested board',
+  'workspaces/oss/README.md': 'a nested readme, not a root companion',
 });
 
 function proj(path: string): ProjectionClassification {
@@ -61,44 +75,61 @@ function expectHome(path: string, home: ProjectionHome): void {
   expect(proj(path)).toEqual({ path, home, rule, unclassified: false });
 }
 
+/** Assert `path` fails closed: no home, no rule, unclassified. */
+function expectUnclassified(path: string): void {
+  expect(proj(path)).toEqual({
+    path,
+    home: null,
+    rule: null,
+    unclassified: true,
+  });
+}
+
 describe('classifyProjection(): SPEC §8.2 rule table (first match wins)', () => {
-  it('row 1: any CLAUDE.md is router / pass_through (root and nested)', () => {
-    expectHome('CLAUDE.md', 'router');
-    expectHome('workspaces/writer/CLAUDE.md', 'router');
+  it('row 1: secrets-shaped paths are secret / omit_assert_absence', () => {
+    expectHome('.env', 'secret');
+    expectHome('.env.local', 'secret');
+    expectHome('secrets/key.pem', 'secret');
+    expectHome('config/api-token.txt', 'secret');
+    expectHome('config/db-credential.json', 'secret');
   });
 
-  it('row 2: .claude/skills/<slug>/SKILL.md is skill / pass_through', () => {
+  it('row 1 wins over every structural home: a secret is never shadowed', () => {
+    // .env under .claude/ (would be harness) and a *token* doc under sync/
+    // (would be sync) are both secret, because the secret rule matches first.
+    expectHome('.claude/.env', 'secret');
+    expectHome('sync/rotate-token.md', 'secret');
+  });
+
+  it('row 2: any CLAUDE.md is router / pass_through (root and nested)', () => {
+    expectHome('CLAUDE.md', 'router');
+    expectHome('workspaces/oss/CLAUDE.md', 'router');
+  });
+
+  it('row 3: .claude/skills/<slug>/SKILL.md is skill / pass_through', () => {
     expectHome('.claude/skills/summarize/SKILL.md', 'skill');
   });
 
-  it('row 3: other .claude/** files are harness / pass_through', () => {
+  it('row 4: other .claude/** files are harness / pass_through', () => {
     expectHome('.claude/hooks/pre-commit.js', 'harness');
     // settings.json under .claude/ is caught by the .claude/** row, still harness.
     expectHome('.claude/settings.json', 'harness');
   });
 
-  it('row 4: root companions by basename are companion / pass_through', () => {
+  it('row 5: root companions by basename are companion / pass_through', () => {
     expectHome('CONVENTIONS.md', 'companion');
     expectHome('EXPANSIONS.md', 'companion');
     expectHome('connections.md', 'companion');
     expectHome('README.md', 'companion');
   });
 
-  it('row 5: settings.json / settings.local.json are harness / pass_through', () => {
+  it('row 6: root settings.json / settings.local.json are harness / pass_through', () => {
     expectHome('settings.json', 'harness');
     expectHome('settings.local.json', 'harness');
   });
 
-  it('row 6: sync/** is sync / pass_through', () => {
+  it('row 7: sync/** is sync / pass_through', () => {
     expectHome('sync/protocol.md', 'sync');
-  });
-
-  it('row 7: secrets-shaped paths are secret / omit_assert_absence', () => {
-    expectHome('.env', 'secret');
-    expectHome('.env.local', 'secret');
-    expectHome('secrets/key.pem', 'secret');
-    expectHome('config/api-token.txt', 'secret');
-    expectHome('config/db-credential.json', 'secret');
   });
 
   it('row 8: archives/** is archive / omit', () => {
@@ -131,6 +162,24 @@ describe('classifyProjection(): SPEC §8.2 rule table (first match wins)', () =>
   });
 });
 
+describe('classifyProjection(): nested-workspace homes (SPEC §8.2 rows 9 to 13)', () => {
+  it('recognises ICM and record homes inside a nested workspace, not fail-closed', () => {
+    // These match on the workspace-relative path (the frame classify() uses),
+    // so a home inside workspaces/oss/ is homed, not over-omitted.
+    expectHome('workspaces/oss/context/state.md', 'context');
+    expectHome('workspaces/oss/.memory/note.md', 'memory');
+    expectHome('workspaces/oss/references/guide.md', 'reference');
+    expectHome('workspaces/oss/references/voice.md', 'voice');
+    expectHome('workspaces/oss/board/STATE.md', 'instance_record');
+  });
+
+  it('root-anchors the companion row: a nested README is not a companion', () => {
+    // README.md is a companion only at the root; nested, it falls closed
+    // (manifest-visible) rather than passing through byte-identical.
+    expectUnclassified('workspaces/oss/README.md');
+  });
+});
+
 describe('classifyProjection(): the references/voice.md split (sanitize-only)', () => {
   it('splits voice.md (shape_only) from every other references/ file (pass_through)', () => {
     // classify() calls both `reference`; the projection distinguishes them.
@@ -147,18 +196,8 @@ describe('classifyProjection(): the references/voice.md split (sanitize-only)', 
 
 describe('classifyProjection(): fail-closed (SPEC §8.2 final row)', () => {
   it('returns unclassified for a file matching no rule, never a silent home', () => {
-    expect(proj('notes.txt')).toEqual({
-      path: 'notes.txt',
-      home: null,
-      rule: null,
-      unclassified: true,
-    });
-    expect(proj('random/data.md')).toEqual({
-      path: 'random/data.md',
-      home: null,
-      rule: null,
-      unclassified: true,
-    });
+    expectUnclassified('notes.txt');
+    expectUnclassified('random/data.md');
   });
 
   it('never emits a home whose rule disagrees with the model map', () => {
