@@ -120,7 +120,7 @@ describe('stage contracts (SPEC §2.6, W7)', () => {
 
 describe('spec version (SPEC §6)', () => {
   it('tracks the SPEC.md document version', () => {
-    expect(SPEC_VERSION).toBe('v1.3');
+    expect(SPEC_VERSION).toBe('v1.4');
   });
 });
 

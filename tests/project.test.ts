@@ -57,6 +57,7 @@ const ws = buildWorkspace({
   'random/data.md': 'a stray md file in no home',
   // nested workspace: homes live under workspaces/<role>/
   'workspaces/oss/CLAUDE.md': '# OSS role',
+  'workspaces/oss/.claude/skills/deep/SKILL.md': 'a nested-workspace skill',
   'workspaces/oss/context/state.md': 'nested situational',
   'workspaces/oss/.memory/note.md': 'nested memory',
   'workspaces/oss/references/guide.md': 'nested reference',
@@ -171,6 +172,13 @@ describe('classifyProjection(): nested-workspace homes (SPEC §8.2 rows 9 to 13)
     expectHome('workspaces/oss/references/guide.md', 'reference');
     expectHome('workspaces/oss/references/voice.md', 'voice');
     expectHome('workspaces/oss/board/STATE.md', 'instance_record');
+  });
+
+  it('recognises a skill inside a nested workspace (SPEC §8.2 row 3)', () => {
+    // Row 3 matches on the workspace-relative path, the same nested frame as
+    // rows 9 to 13, so a nested workspace's own .claude/skills/<slug>/SKILL.md
+    // homes to skill / pass_through rather than failing closed (issue #64).
+    expectHome('workspaces/oss/.claude/skills/deep/SKILL.md', 'skill');
   });
 
   it('root-anchors the companion row: a nested README is not a companion', () => {
