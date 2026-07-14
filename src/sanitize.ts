@@ -298,19 +298,21 @@ function applyRule(rule: ProjectionRule, content: string): Applied {
 // ---------------------------------------------------------------------------
 
 /**
- * `shape_only` (SPEC §8.2): keep the frontmatter *keys* and every heading;
- * redact the frontmatter *values* and each section's body prose. The structure
- * (frontmatter shape, section shape) survives; the instance-specific content
- * does not. Frontmatter values are redacted, not kept verbatim, because a value
- * is content and never navigation: the AIOS `.memory/` `description:` field is
- * the single most private line in the file (PR #62 review B1, SPEC §8.4).
+ * `shape_only` (SPEC §8.2): keep the frontmatter *keys* and every heading
+ * *level*; redact the frontmatter *values*, the heading *text*, and each
+ * section's body prose. Only the structural skeleton (frontmatter shape, heading
+ * levels, section count) survives; all instance-specific content is gone.
+ * Frontmatter values and heading text are redacted, not kept, because both are
+ * content and never navigation: the AIOS `.memory/` `description:` field and a
+ * heading like `## Call with <name> re: <deal>` are among the most private lines
+ * in the file (PR #62, Stu's resolved redaction-depth decision, SPEC §8.4).
  */
 export function shapeOnly(content: string): string {
   const { frontmatter, rest } = splitFrontmatter(content);
   const out: string[] = [];
   if (frontmatter !== null) out.push(redactFrontmatter(frontmatter));
   for (const section of splitSections(rest)) {
-    if (section.level > 0) out.push(headingLine(section.level, section.heading));
+    if (section.level > 0) out.push(redactedHeading(section.level));
     const n = proseLineCount(section.body);
     if (n > 0) out.push(redactionMarker(n, 'lines'));
   }
@@ -318,24 +320,25 @@ export function shapeOnly(content: string): string {
 }
 
 /**
- * `redact_instance` (SPEC §8.2): keep the frontmatter keys, every heading, and
- * each Markdown table's column-header and delimiter rows (the structural
- * skeleton); redact the frontmatter values, every table data row, and all other
- * body prose.
+ * `redact_instance` (SPEC §8.2): keep the frontmatter keys, every heading
+ * *level*, and each Markdown table's column-header and delimiter rows (the
+ * structural skeleton); redact the frontmatter values, the heading text, every
+ * table data row, and all other body prose.
  *
- * Conservative default for the genuine open decision on redaction depth (SPEC
- * §8.3): aggressive, structure-only. Status *values* (OPEN / ACTIONED) sit in
- * data rows and so are redacted; only the column header that names them
- * survives. Frontmatter values redact for the same reason as `shape_only` (a
- * value is content, PR #62 review B1). The safe direction for a privacy tool is
- * to over-redact and let a reviewer re-widen, not the reverse.
+ * The resolved redaction-depth decision (SPEC §8.3, PR #62): aggressive,
+ * structure-only. Heading text redacts (a dated decision heading like
+ * `## 2026-06-01 - Acme terms` collapses to `## <!-- redacted heading -->`, its
+ * level preserved as shape); status *values* (OPEN / ACTIONED) sit in data rows
+ * and so are redacted, only the column header that names them surviving;
+ * frontmatter values redact as in `shape_only`. Over-redact and let a reviewer
+ * re-widen, never the reverse.
  */
 export function redactInstance(content: string): string {
   const { frontmatter, rest } = splitFrontmatter(content);
   const out: string[] = [];
   if (frontmatter !== null) out.push(redactFrontmatter(frontmatter));
   for (const section of splitSections(rest)) {
-    if (section.level > 0) out.push(headingLine(section.level, section.heading));
+    if (section.level > 0) out.push(redactedHeading(section.level));
     out.push(...redactBody(section.body));
   }
   return finalize(out);
@@ -450,9 +453,15 @@ function redactFrontmatter(block: string): string {
     .join('\n');
 }
 
-/** Reconstruct a heading line from its level and text (`##` + ' ' + text). */
-function headingLine(level: number, heading: string): string {
-  return `${'#'.repeat(level)} ${heading}`;
+/**
+ * A redacted heading: keep the `#`-level prefix as structural shape (section
+ * count and nesting depth survive), redact the text (PR #62, Stu's resolved
+ * redaction-depth decision). Same-level headings collapsing to identical
+ * redacted forms is intended and deterministic: the shape is what survives, the
+ * text (potential content) is gone, so the redacted homes carry no caveat.
+ */
+function redactedHeading(level: number): string {
+  return `${'#'.repeat(level)} <!-- redacted heading -->`;
 }
 
 /** Non-blank line count: the honest number of prose lines a marker stands in for. */
@@ -517,15 +526,14 @@ function detectLeaks(
 const BOUNDARY_NOTE = [
   'Boundary (read before you push):',
   '  This redaction is home-based. In the redacted homes (memory, context, voice,',
-  '  and the coordination records) it redacts body prose, table data rows, and',
-  '  frontmatter values, and it omits secrets and archives. Two things survive by',
-  '  design and the required leak-check MUST scan them: (1) HEADING TEXT in the',
-  '  redacted homes is kept verbatim as structure, so a content-bearing heading',
-  '  still ships; (2) pass_through structural files (routers, companions, harness,',
-  '  sync, references) are not scanned for arbitrary names at all, since that is',
-  "  unbounded. Residual names in either place are the independent leak-check's",
-  '  job; this manifest feeds that human pass, it does not replace it. Ratification',
-  '  stays human: review this manifest, then copy the output tree out.',
+  '  and the coordination records) only the structural skeleton survives (heading',
+  '  levels, table column-headers and delimiters, frontmatter keys); all heading',
+  '  text, body prose, table data, and frontmatter values are redacted, and',
+  '  secrets and archives are omitted. It does NOT scan pass_through structural',
+  '  files (routers, companions, harness, sync, references) for arbitrary names:',
+  "  that is unbounded, and is the required independent leak-check's job. This",
+  '  manifest feeds that human pass, it does not replace it. Ratification stays',
+  '  human: review this manifest, then copy the output tree out.',
 ].join('\n');
 
 /**

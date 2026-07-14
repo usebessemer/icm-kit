@@ -12,4 +12,4 @@ next week. Both are the operator's to close.
 ## Call with Marlowe Sable re the Acme acquisition
 
 Notes from the call live here; the sensitive party name is in the heading above,
-the heading-leak vector the projection does not yet redact.
+so the projection must redact the heading text, not just the body.

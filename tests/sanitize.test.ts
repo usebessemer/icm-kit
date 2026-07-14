@@ -109,35 +109,38 @@ describe('projectSupport(): rule dispatch (SPEC §8.2)', () => {
     expect(emitted('.claude/hooks/h.js')).toBe('// harness hook\n');
   });
 
-  it('shape_only keeps headings, drops body prose (memory, context, voice)', () => {
-    expect(emitted('.memory/note.md')).toBe('# Note\n<!-- redacted: 1 lines -->\n');
-    expect(emitted('references/voice.md')).toBe(
-      '# Voice\n<!-- redacted: 1 lines -->\n## Register\n<!-- redacted: 1 lines -->\n',
+  it('shape_only keeps heading levels, redacts heading text and body prose', () => {
+    expect(emitted('.memory/note.md')).toBe(
+      '# <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n',
     );
-    // No instance name survives a shaped file.
+    expect(emitted('references/voice.md')).toBe(
+      '# <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n## <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n',
+    );
+    // Neither the body name nor the heading text survives a shaped file.
     expect(emitted('context/state.md')).not.toContain('Devon Vale');
   });
 
   it('shape_only redacts frontmatter values but keeps the keys as shape (review B1)', () => {
     expect(emitted('context/fm.md')).toBe(
-      '---\ntitle: <!-- redacted -->\nowner: <!-- redacted -->\n---\n# Heading\n<!-- redacted: 1 lines -->\n',
+      '---\ntitle: <!-- redacted -->\nowner: <!-- redacted -->\n---\n# <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n',
     );
     // The private frontmatter value never survives.
     expect(emitted('context/fm.md')).not.toContain('Zephyr Private');
   });
 
-  it('redact_instance keeps the table skeleton and headings, redacts data rows and prose', () => {
+  it('redact_instance keeps the table skeleton and heading levels, redacts headings, rows, and prose', () => {
     expect(emitted('board/state.md')).toBe(
-      '# Board\n| Item | Owner | Status |\n| --- | --- | --- |\n<!-- redacted: 1 rows -->\n## Notes\n<!-- redacted: 1 lines -->\n',
+      '# <!-- redacted heading -->\n| Item | Owner | Status |\n| --- | --- | --- |\n<!-- redacted: 1 rows -->\n## <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n',
     );
-    // Dated decision headings survive as structure; their bodies do not.
+    // Dated decision headings collapse to level-only shape; their text and bodies go.
     expect(emitted('decisions/log.md')).toBe(
-      '# Log\n## 2026-01-01 · Ship it\n<!-- redacted: 1 lines -->\n',
+      '# <!-- redacted heading -->\n## <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n',
     );
-    // No instance name survives a redacted record.
+    // Neither the instance name nor a heading date survives a redacted record.
     for (const p of ['board/state.md', 'registry.md', 'decisions/log.md', 'channels/general.md']) {
       expect(emitted(p)).not.toContain('Devon Vale');
     }
+    expect(emitted('decisions/log.md')).not.toContain('2026-01-01');
   });
 
   it('omit drops archives with a manifest line (never silently)', () => {
@@ -204,7 +207,7 @@ describe('shapeOnly() / redactInstance() / splitFrontmatter()', () => {
       '---\nname: n\ndescription: private fact\nmetadata:\n  type: user\ntags:\n  - acme\n---\n# H\n\nbody\n',
     );
     expect(out).toBe(
-      '---\nname: <!-- redacted -->\ndescription: <!-- redacted -->\nmetadata:\n  type: <!-- redacted -->\ntags:\n  - <!-- redacted -->\n---\n# H\n<!-- redacted: 1 lines -->\n',
+      '---\nname: <!-- redacted -->\ndescription: <!-- redacted -->\nmetadata:\n  type: <!-- redacted -->\ntags:\n  - <!-- redacted -->\n---\n# <!-- redacted heading -->\n<!-- redacted: 1 lines -->\n',
     );
   });
 
@@ -237,7 +240,7 @@ describe('renderManifest()', () => {
   });
 
   it('shows the survived before/after skeleton for a redacted file', () => {
-    expect(manifest).toContain('| # Board');
+    expect(manifest).toContain('| # <!-- redacted heading -->');
     expect(manifest).toContain('lines -> ');
   });
 });
