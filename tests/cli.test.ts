@@ -24,12 +24,26 @@ const tsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
 const aiosRoot = join(here, 'fixtures', 'aios-mirror');
 const privateRoot = join(here, 'fixtures', 'aios-private');
 
-/** The seeded canaries the projection must strip from every output tree (SPEC §8). */
+/**
+ * Canaries the projection MUST strip from every output tree (SPEC §8): body
+ * prose + table-data (name/email/API-key) and a frontmatter `description:` value
+ * (`Ophelia Frontmatter`), the AIOS memory format's most private field (review B1).
+ */
 const CANARIES = [
   'Dana Winterbourne',
   'dana.winterbourne@example-private.test',
   'sk-canary-9f3a2b7c1e4d6f8a0b2c4e6f8a1b3d5f',
+  'Ophelia Frontmatter',
 ];
+
+/**
+ * A canary seeded in a `##` heading in a redacted home. Under the current
+ * (minimum) boundary, heading TEXT survives verbatim (PR #62 review B2); this is
+ * pinned as a characterization of the documented boundary, not an endorsed leak.
+ * When the heading-text-redaction depth is decided (Stu's call), flip this to an
+ * absence assertion and add the level-only redaction.
+ */
+const HEADING_CANARY = 'Marlowe Sable';
 
 /** Read an output tree into its sorted relative paths and one concatenated blob. */
 function readTree(dir: string): { paths: string[]; blob: string } {
@@ -137,8 +151,13 @@ describe('icm-kit sanitize (CLI, support mode)', () => {
       // The secrets file is absent from the output tree.
       expect(tree.paths).not.toContain('secrets/credentials.txt');
       expect(existsSync(join(out, 'secrets'))).toBe(false);
-      // Zero occurrences of any seeded canary anywhere under --out.
+      // Zero occurrences of any body/table/frontmatter-value canary under --out.
       for (const canary of CANARIES) expect(tree.blob).not.toContain(canary);
+      // Heading text survives by the documented boundary (review B2, minimum):
+      // the heading canary is present, and the manifest discloses that headings
+      // in redacted homes ship. Flip both when heading-text redaction lands.
+      expect(tree.blob).toContain(HEADING_CANARY);
+      expect(stdout).toContain('redacted homes is kept verbatim');
 
       // The output tree audits GREEN.
       const audited = runCli(['audit', out]);

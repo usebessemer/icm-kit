@@ -298,14 +298,17 @@ function applyRule(rule: ProjectionRule, content: string): Applied {
 // ---------------------------------------------------------------------------
 
 /**
- * `shape_only` (SPEC §8.2): keep a leading frontmatter block and every heading;
- * replace each section's body prose with one redaction marker. The structure
- * (section shape) survives; the instance-specific prose does not.
+ * `shape_only` (SPEC §8.2): keep the frontmatter *keys* and every heading;
+ * redact the frontmatter *values* and each section's body prose. The structure
+ * (frontmatter shape, section shape) survives; the instance-specific content
+ * does not. Frontmatter values are redacted, not kept verbatim, because a value
+ * is content and never navigation: the AIOS `.memory/` `description:` field is
+ * the single most private line in the file (PR #62 review B1, SPEC §8.4).
  */
 export function shapeOnly(content: string): string {
   const { frontmatter, rest } = splitFrontmatter(content);
   const out: string[] = [];
-  if (frontmatter !== null) out.push(frontmatter);
+  if (frontmatter !== null) out.push(redactFrontmatter(frontmatter));
   for (const section of splitSections(rest)) {
     if (section.level > 0) out.push(headingLine(section.level, section.heading));
     const n = proseLineCount(section.body);
@@ -315,20 +318,22 @@ export function shapeOnly(content: string): string {
 }
 
 /**
- * `redact_instance` (SPEC §8.2): keep frontmatter, every heading, and each
- * Markdown table's column-header and delimiter rows (the structural skeleton);
- * redact every table data row and all other body prose.
+ * `redact_instance` (SPEC §8.2): keep the frontmatter keys, every heading, and
+ * each Markdown table's column-header and delimiter rows (the structural
+ * skeleton); redact the frontmatter values, every table data row, and all other
+ * body prose.
  *
  * Conservative default for the genuine open decision on redaction depth (SPEC
  * §8.3): aggressive, structure-only. Status *values* (OPEN / ACTIONED) sit in
  * data rows and so are redacted; only the column header that names them
- * survives. The safe direction for a privacy tool is to over-redact and let a
- * reviewer re-widen, not the reverse.
+ * survives. Frontmatter values redact for the same reason as `shape_only` (a
+ * value is content, PR #62 review B1). The safe direction for a privacy tool is
+ * to over-redact and let a reviewer re-widen, not the reverse.
  */
 export function redactInstance(content: string): string {
   const { frontmatter, rest } = splitFrontmatter(content);
   const out: string[] = [];
-  if (frontmatter !== null) out.push(frontmatter);
+  if (frontmatter !== null) out.push(redactFrontmatter(frontmatter));
   for (const section of splitSections(rest)) {
     if (section.level > 0) out.push(headingLine(section.level, section.heading));
     out.push(...redactBody(section.body));
@@ -384,8 +389,9 @@ function redactBody(body: string): string[] {
  * Split a leading YAML frontmatter block off the content. A frontmatter block
  * is a `---` line at the very start, up to the next `---` line. Returns the
  * block verbatim (fences included) plus the remainder after it, or a null block
- * when none is present. Lightweight by design: shape_only homes rarely carry
- * frontmatter (SPEC §8.2, shape_only note).
+ * when none is present. The AIOS `.memory/` format carries `name` /
+ * `description` / `metadata` frontmatter whose values are private, so
+ * `redactFrontmatter` redacts those values while the keys survive (SPEC §8.4).
  */
 export function splitFrontmatter(content: string): {
   frontmatter: string | null;
@@ -403,6 +409,45 @@ export function splitFrontmatter(content: string): {
   }
   // An unterminated `---` is not frontmatter; treat the whole file as body.
   return { frontmatter: null, rest: content };
+}
+
+/** The marker a redacted frontmatter value is replaced with (PR #62 review B1). */
+const FRONTMATTER_REDACTION = '<!-- redacted -->';
+
+/**
+ * Redact the values of a YAML frontmatter block, keeping the keys and the block
+ * structure as shape (PR #62 review B1, SPEC §8.4). A value is content and never
+ * navigation, so redacting it costs nothing structural: a reviewer fixing
+ * frontmatter *shape* needs the keys, not the values.
+ *
+ * Line-based and conservative, so it does not need a YAML parser and fails
+ * toward redaction on anything it does not recognise:
+ * - `---` fences and blank lines survive verbatim (structure).
+ * - `key:` with an empty value survives (a mapping parent / block opener; its
+ *   children are redacted on their own lines).
+ * - `key: value` keeps `key:` and redacts the value; a `- key: value` list-map
+ *   entry keeps its `- ` and key too.
+ * - `- scalar` keeps the `- ` list marker and redacts the item.
+ * - anything else (a bare scalar, a block-scalar continuation) is redacted
+ *   whole, keeping only its indentation.
+ */
+function redactFrontmatter(block: string): string {
+  return block
+    .split('\n')
+    .map((line) => {
+      if (line === '---' || line.trim() === '') return line;
+      const mapping = /^(\s*)(-\s+)?([\w.$-]+):(\s*)(.*)$/.exec(line);
+      if (mapping) {
+        const [, indent, dash = '', key, , value] = mapping;
+        if (value.trim() === '') return line; // parent key: keep as shape
+        return `${indent}${dash}${key}: ${FRONTMATTER_REDACTION}`;
+      }
+      const listItem = /^(\s*)-\s+.*$/.exec(line);
+      if (listItem) return `${listItem[1]}- ${FRONTMATTER_REDACTION}`;
+      const indent = /^(\s*)/.exec(line)![1];
+      return `${indent}${FRONTMATTER_REDACTION}`;
+    })
+    .join('\n');
 }
 
 /** Reconstruct a heading line from its level and text (`##` + ' ' + text). */
@@ -471,11 +516,14 @@ function detectLeaks(
  */
 const BOUNDARY_NOTE = [
   'Boundary (read before you push):',
-  '  This redaction is home-based. It redacts the homes where private instance',
-  '  concentrates (memory, context, voice, and the coordination records) and omits',
-  '  secrets and archives. It does NOT scan pass_through structural files (the',
-  '  routers, companions, harness, sync, and references) for arbitrary names: that',
-  "  is unbounded. Residual names there are the required independent leak-check's",
+  '  This redaction is home-based. In the redacted homes (memory, context, voice,',
+  '  and the coordination records) it redacts body prose, table data rows, and',
+  '  frontmatter values, and it omits secrets and archives. Two things survive by',
+  '  design and the required leak-check MUST scan them: (1) HEADING TEXT in the',
+  '  redacted homes is kept verbatim as structure, so a content-bearing heading',
+  '  still ships; (2) pass_through structural files (routers, companions, harness,',
+  '  sync, references) are not scanned for arbitrary names at all, since that is',
+  "  unbounded. Residual names in either place are the independent leak-check's",
   '  job; this manifest feeds that human pass, it does not replace it. Ratification',
   '  stays human: review this manifest, then copy the output tree out.',
 ].join('\n');

@@ -67,7 +67,7 @@ const TREE = makeWorkspace([
   { path: 'context/state.md', content: '# State\n\nDevon Vale is mid-flight on Acme.\n' },
   {
     path: 'context/fm.md',
-    content: '---\ntitle: state\nowner: kept-verbatim\n---\n\n# Heading\n\nprivate body prose.\n',
+    content: '---\ntitle: state\nowner: Zephyr Private\n---\n\n# Heading\n\nprivate body prose.\n',
   },
   { path: '.memory/note.md', content: '# Note\n\nDevon Vale signs off as D.V.\n' },
   {
@@ -118,10 +118,12 @@ describe('projectSupport(): rule dispatch (SPEC §8.2)', () => {
     expect(emitted('context/state.md')).not.toContain('Devon Vale');
   });
 
-  it('shape_only preserves a leading frontmatter block verbatim', () => {
+  it('shape_only redacts frontmatter values but keeps the keys as shape (review B1)', () => {
     expect(emitted('context/fm.md')).toBe(
-      '---\ntitle: state\nowner: kept-verbatim\n---\n# Heading\n<!-- redacted: 1 lines -->\n',
+      '---\ntitle: <!-- redacted -->\nowner: <!-- redacted -->\n---\n# Heading\n<!-- redacted: 1 lines -->\n',
     );
+    // The private frontmatter value never survives.
+    expect(emitted('context/fm.md')).not.toContain('Zephyr Private');
   });
 
   it('redact_instance keeps the table skeleton and headings, redacts data rows and prose', () => {
@@ -195,6 +197,15 @@ describe('shapeOnly() / redactInstance() / splitFrontmatter()', () => {
   it('redactInstance keeps a table header and delimiter, redacts the data rows', () => {
     const out = redactInstance('| A | B |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |\n');
     expect(out).toBe('| A | B |\n| - | - |\n<!-- redacted: 2 rows -->\n');
+  });
+
+  it('redacts frontmatter values (incl. nested), keeps keys, parent, and fences (review B1)', () => {
+    const out = shapeOnly(
+      '---\nname: n\ndescription: private fact\nmetadata:\n  type: user\ntags:\n  - acme\n---\n# H\n\nbody\n',
+    );
+    expect(out).toBe(
+      '---\nname: <!-- redacted -->\ndescription: <!-- redacted -->\nmetadata:\n  type: <!-- redacted -->\ntags:\n  - <!-- redacted -->\n---\n# H\n<!-- redacted: 1 lines -->\n',
+    );
   });
 
   it('splitFrontmatter detects a terminated block and rejects an unterminated one', () => {
