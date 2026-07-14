@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   assertGate,
+  projectExtract,
   projectSupport,
   redactInstance,
   renderManifest,
@@ -242,5 +243,138 @@ describe('renderManifest()', () => {
   it('shows the survived before/after skeleton for a redacted file', () => {
     expect(manifest).toContain('| # <!-- redacted heading -->');
     expect(manifest).toContain('lines -> ');
+  });
+});
+
+/**
+ * Extract mode (SPEC §8.5): the scoped capability harvest. The tree below mirrors
+ * the `aios-mirror` shape (a skill under `.claude/skills/example/`, a routing
+ * root `CLAUDE.md` carrying private prose + a load table, and the private homes
+ * and a secret and an unclassified client doc all *out of scope*), so the
+ * extraction is exercised precisely: the include set + its minimal routing
+ * context, and nothing else.
+ */
+describe('projectExtract(): scoped capability harvest (SPEC §8.5)', () => {
+  // A private name that must never survive: it sits in the routing CLAUDE.md
+  // body and in every out-of-scope home, never in the skill being extracted.
+  const CANARY = 'Cordelia Ashgrove';
+
+  const WS = makeWorkspace([
+    {
+      path: 'CLAUDE.md',
+      content: `# AIOS root\n\nWe are ${CANARY}, the operator. Voice: terse.\n\n## Load table\n\n| Task | Load |\n| --- | --- |\n| draft | references/voice.md |\n`,
+    },
+    {
+      path: '.claude/skills/example/SKILL.md',
+      content: '# Example skill\n\nA portable capability. No private instance here.\n',
+    },
+    { path: 'context/profile.md', content: `# Profile\n\n${CANARY} is mid-flight on Acme.\n` },
+    { path: '.memory/note.md', content: `# Note\n\n${CANARY} signs off as C.A.\n` },
+    { path: 'references/voice.md', content: `# Voice\n\n${CANARY} writes terse.\n` },
+    { path: 'secrets/creds.txt', content: 'API_KEY=sk-secret-000\n' },
+    // Unclassified in support mode; must not block or appear (it is out of scope).
+    { path: 'clients/acme/brief.md', content: `# Acme brief\n\n${CANARY} owns it.\n` },
+  ]);
+
+  const result = projectExtract(WS, ['.claude/skills/example/']);
+  const paths = result.files.map((f) => f.path).sort();
+  const blob = result.files.map((f) => f.content).join('\n');
+
+  it('emits only the include set + its minimal routing context, nothing else', () => {
+    expect(paths).toEqual(['.claude/skills/example/SKILL.md', 'CLAUDE.md']);
+    expect(result.gate.ok).toBe(true);
+    // The out-of-scope homes, including the unclassified client doc and the
+    // secret, neither block the run nor appear in the tree.
+    for (const p of ['clients/acme/brief.md', 'secrets/creds.txt', 'context/profile.md', '.memory/note.md']) {
+      expect(paths).not.toContain(p);
+    }
+  });
+
+  it('passes the included skill through verbatim', () => {
+    expect(result.files.find((f) => f.path === '.claude/skills/example/SKILL.md')?.content).toBe(
+      '# Example skill\n\nA portable capability. No private instance here.\n',
+    );
+  });
+
+  it('shape-redacts the routing CLAUDE.md (router -> shape_only, not pass_through)', () => {
+    const claude = result.files.find((f) => f.path === 'CLAUDE.md')!.content;
+    expect(claude).toContain('# <!-- redacted heading -->');
+    // Heading text, body prose, and the load table are all gone from the router.
+    expect(claude).not.toContain('Load table');
+    expect(claude).not.toContain('references/voice.md');
+  });
+
+  it('leaves zero canary occurrences anywhere in the extracted tree', () => {
+    expect(blob).not.toContain(CANARY);
+  });
+
+  it('is deterministic: a second projection is byte-identical', () => {
+    const again = projectExtract(WS, ['.claude/skills/example/']);
+    expect(again.files).toEqual(result.files);
+  });
+
+  it('records the include set and every routing file it pulled in', () => {
+    expect(result.mode).toBe('extract');
+    expect(result.includes).toEqual(['.claude/skills/example']);
+    expect(result.routing).toEqual(['CLAUDE.md']);
+    const manifest = renderManifest(result);
+    expect(manifest).toContain('icm-kit sanitize --mode extract');
+    expect(manifest).toContain('.claude/skills/example');
+    expect(manifest).toContain('routing context pulled in');
+    // The manifest carries the §8.6 required-leak-check protocol for public output.
+    expect(manifest).toContain('REQUIRED');
+    expect(manifest).toContain('leak-check');
+    expect(manifest).toContain('2026-07-05');
+  });
+
+  it('an included secret is omitted, flagged present, and asserted absent (gate OK)', () => {
+    const ws = makeWorkspace([
+      { path: 'CLAUDE.md', content: '# Root\n\nprivate.\n' },
+      { path: 'secrets/creds.txt', content: 'API_KEY=sk-000\n' },
+    ]);
+    const r = projectExtract(ws, ['secrets/']);
+    expect(r.files.map((f) => f.path)).toEqual(['CLAUDE.md']); // routing only; secret omitted
+    expect(r.gate.secretsPresent).toEqual(['secrets/creds.txt']);
+    expect(r.gate.ok).toBe(true);
+  });
+
+  it('fails closed on an unclassified included file (assertGate throws)', () => {
+    const ws = makeWorkspace([
+      { path: 'CLAUDE.md', content: '# Root\n' },
+      { path: 'loose/orphan.md', content: '# Orphan\n\nno home\n' },
+    ]);
+    const r = projectExtract(ws, ['loose/']);
+    expect(r.gate.ok).toBe(false);
+    expect(r.gate.unclassified).toEqual(['loose/orphan.md']);
+    expect(() => assertGate(r)).toThrow(UnclassifiedFilesError);
+  });
+});
+
+describe('projectExtract(): routing chain across nested workspaces (SPEC §8.5, §2.2)', () => {
+  const WS = makeWorkspace([
+    { path: 'CLAUDE.md', content: '# Root\n\nRoot identity, private.\n' },
+    { path: 'workspaces/sub/CLAUDE.md', content: '# Sub role\n\nSub identity, private.\n' },
+    { path: 'workspaces/sub/context/state.md', content: '# State\n\nprivate nested context.\n' },
+    // Out of scope: a sibling context file that must not be pulled in.
+    { path: 'workspaces/sub/references/api.md', content: '# API\n\nshared.\n' },
+  ]);
+  const result = projectExtract(WS, ['workspaces/sub/context/']);
+
+  it('pulls in every containing-root CLAUDE.md, nearest up to the audit root, each shaped', () => {
+    const paths = result.files.map((f) => f.path).sort();
+    expect(paths).toEqual([
+      'CLAUDE.md',
+      'workspaces/sub/CLAUDE.md',
+      'workspaces/sub/context/state.md',
+    ]);
+    expect(result.routing).toEqual(['CLAUDE.md', 'workspaces/sub/CLAUDE.md']);
+    // Both routers are shaped, not passed through: their private identity is gone.
+    for (const r of ['CLAUDE.md', 'workspaces/sub/CLAUDE.md']) {
+      const c = result.files.find((f) => f.path === r)!.content;
+      expect(c).toContain('# <!-- redacted heading -->');
+      expect(c).not.toContain('identity');
+    }
+    // The out-of-scope sibling under the same nested workspace is not emitted.
+    expect(paths).not.toContain('workspaces/sub/references/api.md');
   });
 });

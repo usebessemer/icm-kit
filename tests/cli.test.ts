@@ -192,13 +192,75 @@ describe('icm-kit sanitize (CLI, support mode)', () => {
       expect(nonEmpty.stderr).toContain('output directory is not empty');
       expect(nonEmpty.stderr).toContain('fresh tree');
 
-      const badMode = runCli(['sanitize', privateRoot, '--out', join(base, 'x'), '--mode', 'extract']);
+      const badMode = runCli(['sanitize', privateRoot, '--out', join(base, 'x'), '--mode', 'bogus']);
       expect(badMode.status).toBe(1);
-      expect(badMode.stderr).toContain('extract');
+      expect(badMode.stderr).toContain('unknown mode');
 
       const noOut = runCli(['sanitize', privateRoot]);
       expect(noOut.status).toBe(1);
       expect(noOut.stderr).toContain('output directory is required');
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 20000);
+});
+
+describe('icm-kit sanitize (CLI, extract mode)', () => {
+  it('extracts a skill from aios-mirror: skill verbatim + shaped routing CLAUDE.md, nothing else, canary-free, deterministic', () => {
+    const base = mkdtempSync(join(tmpdir(), 'icm-san-ext-'));
+    const base2 = mkdtempSync(join(tmpdir(), 'icm-san-ext2-'));
+    const out = join(base, 'out');
+    const out2 = join(base2, 'out');
+    const extractArgs = (dst: string): string[] => [
+      'sanitize', aiosRoot, '--mode', 'extract', '--include', '.claude/skills/example/', '--out', dst,
+    ];
+    try {
+      const { status, stdout } = runCli(extractArgs(out));
+      expect(status).toBe(0);
+
+      // The manifest names the scope: the include set and the routing it pulled.
+      expect(stdout).toContain('icm-kit sanitize --mode extract');
+      expect(stdout).toContain('.claude/skills/example');
+      expect(stdout).toContain('routing context pulled in');
+      // The §8.6 required-leak-check protocol is stated for public output.
+      expect(stdout).toContain('REQUIRED');
+      expect(stdout).toContain('2026-07-05');
+
+      const tree = readTree(out);
+      // Exactly the include set + its minimal routing context, nothing else: the
+      // rest of aios-mirror (incl. its unclassified client docs) is out of scope.
+      expect(tree.paths).toEqual(['.claude/skills/example/SKILL.md', 'CLAUDE.md']);
+      // The skill passed through verbatim.
+      expect(readFileSync(join(out, '.claude', 'skills', 'example', 'SKILL.md'), 'utf8')).toContain(
+        'An auto-discovered skill',
+      );
+      // The routing CLAUDE.md is shape-redacted: skeleton only, no private prose.
+      const claude = readFileSync(join(out, 'CLAUDE.md'), 'utf8');
+      expect(claude).toContain('# <!-- redacted heading -->');
+      expect(claude).not.toContain('We are the AIOS operator');
+      expect(claude).not.toContain('open the thread');
+      // No seeded canary survives anywhere under --out.
+      for (const canary of CANARIES) expect(tree.blob).not.toContain(canary);
+
+      // Determinism: a second run produces a byte-identical tree.
+      expect(runCli(extractArgs(out2)).status).toBe(0);
+      const tree2 = readTree(out2);
+      expect(tree2.paths).toEqual(tree.paths);
+      expect(tree2.blob).toBe(tree.blob);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      rmSync(base2, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('extract with no --include is a typed error: exit 1, names --include, writes nothing', () => {
+    const base = mkdtempSync(join(tmpdir(), 'icm-san-ext-noinc-'));
+    const out = join(base, 'out');
+    try {
+      const { status, stderr } = runCli(['sanitize', aiosRoot, '--mode', 'extract', '--out', out]);
+      expect(status).toBe(1);
+      expect(stderr).toContain('--include');
+      expect(existsSync(out)).toBe(false); // the include check precedes any write
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
