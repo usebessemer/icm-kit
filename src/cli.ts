@@ -3,7 +3,25 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { audit } from './audit.js';
 import { readWorkspace } from './workspace.js';
-import { InvalidRoleError, NonEmptyTargetError, writeWorkspace } from './init.js';
+import {
+  defaultWriter,
+  guardTarget,
+  InvalidRoleError,
+  NonEmptyTargetError,
+  writeWorkspace,
+} from './init.js';
+import {
+  assertGate,
+  IncludeRequiredError,
+  OutputRequiredError,
+  projectExtract,
+  projectSupport,
+  renderManifest,
+  SecretLeakError,
+  UnclassifiedFilesError,
+  UnsupportedModeError,
+} from './sanitize.js';
+import type { ProjectionResult } from './sanitize.js';
 import { SPEC_VERSION } from './model.js';
 import type { Finding } from './model.js';
 
@@ -12,7 +30,7 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('1.0.0');
+  .version('1.4.0');
 
 program
   .command('init')
@@ -73,6 +91,66 @@ program
     // Output and exit policy are the tool's concern (SPEC §5): a clean
     // workspace exits 0, any finding exits non-zero so checks can gate on it.
     if (findings.length > 0) process.exitCode = 1;
+  });
+
+program
+  .command('sanitize')
+  .description('Project a private workspace into a shareable form (SPEC §8)')
+  .argument('[path]', 'workspace root to sanitize', '.')
+  .option('--out <dir>', 'output directory (required): a fresh tree, never in-place')
+  .option('--mode <mode>', 'support | extract', 'support')
+  .option(
+    '--include <paths...>',
+    'extract mode: one or more workspace paths to project (a file or a directory prefix); required with --mode extract',
+  )
+  .action((path: string, options: { out?: string; mode?: string; include?: string[] }) => {
+    try {
+      // Two modes, both typed: an unknown mode is a user error, not a silent
+      // fall-through (SPEC §8). Extract requires at least one --include (§8.5).
+      const mode = options.mode ?? 'support';
+      if (mode !== 'support' && mode !== 'extract') throw new UnsupportedModeError(mode);
+      if (!options.out) throw new OutputRequiredError();
+      const includes = options.include ?? [];
+      if (mode === 'extract' && includes.length === 0) throw new IncludeRequiredError();
+      const out = resolve(options.out);
+
+      // Classify all first, then gate, then write: a fail-closed error (an
+      // unclassified file or a secret leak) aborts before any file is written.
+      const workspace = readWorkspace(resolve(path));
+      const result: ProjectionResult =
+        mode === 'extract' ? projectExtract(workspace, includes) : projectSupport(workspace);
+      assertGate(result);
+      guardTarget(out, false); // never in-place: refuse a non-empty --out
+      defaultWriter(out, result.files);
+
+      process.stdout.write(renderManifest(result));
+      console.log(
+        `\nProjected ${result.files.length} file(s) into ${out} (SPEC ${result.specVersion}).`,
+      );
+    } catch (err) {
+      // Every sanitize failure is user-facing, not a crash: a clean stderr line
+      // and a non-zero exit, mirroring init/audit. The fail-closed errors
+      // (unclassified, secret leak) already carry their offending paths.
+      if (err instanceof NonEmptyTargetError) {
+        // sanitize never writes in place, so the init message's `--overwrite`
+        // hint does not apply: point at a fresh --out instead.
+        console.error(
+          `sanitize: output directory is not empty: ${err.target} (sanitize writes a fresh tree; pass an empty or new --out)`,
+        );
+      } else if (
+        err instanceof UnsupportedModeError ||
+        err instanceof OutputRequiredError ||
+        err instanceof IncludeRequiredError ||
+        err instanceof UnclassifiedFilesError ||
+        err instanceof SecretLeakError
+      ) {
+        console.error(`sanitize: ${err.message}`);
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`sanitize failed: ${message}`);
+      }
+      process.exitCode = 1;
+    }
   });
 
 function report(findings: readonly Finding[]): void {

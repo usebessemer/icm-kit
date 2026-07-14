@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "PreToolUse": []
+  },
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
+}

@@ -1,9 +1,14 @@
 # icm-kit
 
-Tooling for the Interpretable Context Methodology (ICM), an architecture for organizing the folders and files an agent reads. icm-kit provides two commands sharing a single rule model:
+Tooling for the Interpretable Context Methodology (ICM), an architecture for organizing the folders and files an agent reads. icm-kit provides three commands sharing a single rule model:
 
 - **`audit`** (implemented): check an existing workspace against the rule model and report violations of the ICM failure modes.
 - **`init`** (implemented): scaffold a new ICM-compliant workspace that audits green.
+- **`sanitize`** (implemented): project a private workspace into a shareable form. `--mode support` produces a whole-workspace remote-support bundle; `--mode extract --include <paths...>` produces a scoped capability harvest (a named slice plus its minimal routing context). Both classify every file first, fail closed on anything they cannot home, omit secrets and assert their absence, and are deterministic.
+
+### The leak-check is a required stage, not an option
+
+`sanitize` mechanizes the redaction **rules**; it does not verify the **outcome**. For any **public-destined** output (the `extract` mode's purpose), an **independent adversarial leak-check is a required pipeline stage.** The tool redacts the homes where private instance concentrates and emits `pass_through` targets (a skill's `SKILL.md`, a shared reference) verbatim; it does not scan those for arbitrary names. The precedent is on record (2026-07-05): a self-run sanitization pass on public material missed a live email address, a raw internal spec, and real customer names, all caught by independent eyes before the push. The invariant: **the machine pass feeds the adversarial pass; it never substitutes for it.** See [`SPEC.md`](SPEC.md) §8.6.
 
 ## Background
 
