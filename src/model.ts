@@ -21,7 +21,7 @@
  * v1.0 and diverge again only when the package version moves ahead on a
  * non-spec PR.
  */
-export const SPEC_VERSION = 'v1.1' as const;
+export const SPEC_VERSION = 'v1.2' as const;
 
 // ---------------------------------------------------------------------------
 // Classification axes (SPEC §2.2 to §2.4)

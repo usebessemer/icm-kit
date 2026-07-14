@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -14,6 +22,41 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..');
 const tsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
 const aiosRoot = join(here, 'fixtures', 'aios-mirror');
+const privateRoot = join(here, 'fixtures', 'aios-private');
+
+/**
+ * Canaries the projection MUST strip from every output tree (SPEC §8), one per
+ * redaction vector: body prose + table data (name/email/API-key), a frontmatter
+ * `description:` value (`Ophelia Frontmatter`, the AIOS memory format's most
+ * private field, review B1), and a `##`-heading value in a redacted home
+ * (`Marlowe Sable`, review B2, Stu's resolved decision: redact heading text).
+ */
+const CANARIES = [
+  'Dana Winterbourne',
+  'dana.winterbourne@example-private.test',
+  'sk-canary-9f3a2b7c1e4d6f8a0b2c4e6f8a1b3d5f',
+  'Ophelia Frontmatter',
+  'Marlowe Sable',
+];
+
+/** Read an output tree into its sorted relative paths and one concatenated blob. */
+function readTree(dir: string): { paths: string[]; blob: string } {
+  const paths: string[] = [];
+  const parts: string[] = [];
+  const walk = (d: string): void => {
+    for (const entry of readdirSync(d)) {
+      const abs = join(d, entry);
+      if (statSync(abs).isDirectory()) {
+        walk(abs);
+        continue;
+      }
+      paths.push(relative(dir, abs).split(sep).join('/'));
+      parts.push(readFileSync(abs, 'utf8'));
+    }
+  };
+  walk(dir);
+  return { paths: paths.sort(), blob: parts.join('\n') };
+}
 
 function runCli(args: string[]): { status: number; stdout: string; stderr: string } {
   try {
@@ -79,6 +122,85 @@ describe('icm-kit init (CLI)', () => {
       expect(existsSync(join(dir, 'workspaces', 'example', 'CLAUDE.md'))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20000);
+});
+
+describe('icm-kit sanitize (CLI, support mode)', () => {
+  it('projects aios-private: exit 0, canary-free, secret omitted+flagged, output GREEN, deterministic', () => {
+    const base = mkdtempSync(join(tmpdir(), 'icm-san-'));
+    const base2 = mkdtempSync(join(tmpdir(), 'icm-san2-'));
+    // A not-yet-existent child of a real tmp dir: sanitize writes a fresh tree.
+    const out = join(base, 'out');
+    const out2 = join(base2, 'out');
+    try {
+      const { status, stdout } = runCli(['sanitize', privateRoot, '--out', out]);
+      expect(status).toBe(0);
+      // The manifest accounts for every file and names its applied rule.
+      expect(stdout).toContain('CLAUDE.md');
+      expect(stdout).toContain('redact_instance');
+      expect(stdout).toContain('secrets-shaped file present: secrets/credentials.txt');
+
+      const tree = readTree(out);
+      // The secrets file is absent from the output tree.
+      expect(tree.paths).not.toContain('secrets/credentials.txt');
+      expect(existsSync(join(out, 'secrets'))).toBe(false);
+      // Zero occurrences of any seeded canary anywhere under --out: body, table
+      // data, frontmatter values, AND heading text are all redacted (review B2,
+      // Stu's resolved decision), so the redacted homes are genuinely clean.
+      for (const canary of CANARIES) expect(tree.blob).not.toContain(canary);
+      // A redacted home keeps only its structural skeleton (heading levels).
+      expect(tree.blob).toContain('# <!-- redacted heading -->');
+
+      // The output tree audits GREEN.
+      const audited = runCli(['audit', out]);
+      expect(audited.status).toBe(0);
+      expect(audited.stdout).toContain('No findings');
+
+      // Determinism: a second run produces a byte-identical tree.
+      expect(runCli(['sanitize', privateRoot, '--out', out2]).status).toBe(0);
+      const tree2 = readTree(out2);
+      expect(tree2.paths).toEqual(tree.paths);
+      expect(tree2.blob).toBe(tree.blob);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      rmSync(base2, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('fails closed on a workspace with unclassified files: exit 1, names them, writes nothing', () => {
+    const base = mkdtempSync(join(tmpdir(), 'icm-san-fail-'));
+    const out = join(base, 'out');
+    try {
+      const { status, stderr } = runCli(['sanitize', aiosRoot, '--out', out]);
+      expect(status).toBe(1);
+      expect(stderr).toContain('matched no projection rule');
+      expect(stderr).toContain('clients/acme/brief.md');
+      expect(existsSync(out)).toBe(false); // classify-all-first: nothing written
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('refuses a non-empty --out, an unknown --mode, and a missing --out', () => {
+    const base = mkdtempSync(join(tmpdir(), 'icm-san-guard-'));
+    try {
+      // A populated --out is refused (fresh tree, never in-place).
+      writeFileSync(join(base, 'occupied.txt'), 'not empty');
+      const nonEmpty = runCli(['sanitize', privateRoot, '--out', base]);
+      expect(nonEmpty.status).toBe(1);
+      expect(nonEmpty.stderr).toContain('output directory is not empty');
+      expect(nonEmpty.stderr).toContain('fresh tree');
+
+      const badMode = runCli(['sanitize', privateRoot, '--out', join(base, 'x'), '--mode', 'extract']);
+      expect(badMode.status).toBe(1);
+      expect(badMode.stderr).toContain('extract');
+
+      const noOut = runCli(['sanitize', privateRoot]);
+      expect(noOut.status).toBe(1);
+      expect(noOut.stderr).toContain('output directory is required');
+    } finally {
+      rmSync(base, { recursive: true, force: true });
     }
   }, 20000);
 });
