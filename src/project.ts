@@ -67,9 +67,10 @@ const VOICE_FILE = `${CANONICAL_HOMES.reference}/voice.md`;
  * Classify one file path for `sanitize`'s projection (SPEC §8.2).
  *
  * @param filePath  Path relative to the projection root, POSIX-separated. The
- *                  workspace-home rows (9 to 13) re-derive the file's
- *                  nearest-enclosing-workspace-relative path internally, so a
- *                  home inside a nested workspace is recognised (SPEC §2.2).
+ *                  skill row (3) and the workspace-home rows (9 to 13) re-derive
+ *                  the file's nearest-enclosing-workspace-relative path
+ *                  internally, so a home inside a nested workspace is recognised
+ *                  (SPEC §2.2).
  * @param tree      Every file path in the projection tree; used to locate the
  *                  nearest workspace root and passed to `classify()` for the
  *                  Markdown ICM homes.
@@ -95,8 +96,10 @@ export function classifyProjection(
   // Row 2: any CLAUDE.md (root or a nested workspace) -> router.
   if (base === ROOT_IDENTITY_FILE) return home('router', filePath);
 
-  // Row 3: .claude/skills/<slug>/SKILL.md -> skill.
-  if (isSkillFile(filePath)) return home('skill', filePath);
+  // Row 3: .claude/skills/<slug>/SKILL.md -> skill. Matched on the
+  // workspace-relative path (like rows 9 to 13), so a nested workspace's own
+  // harness skill home is recognised rather than failed closed (issue #64).
+  if (isSkillFile(filePath, tree)) return home('skill', filePath);
 
   // Row 4: any other .claude/** file (hooks, harness config) -> harness.
   if (isUnderDir(filePath, HARNESS_HOME)) return home('harness', filePath);
@@ -189,13 +192,19 @@ function isUnderDir(path: string, dir: string): boolean {
 }
 
 /**
- * True only for `.claude/skills/<slug>/SKILL.md` (SPEC §8.2 row 2). A dedicated
+ * True only for `.claude/skills/<slug>/SKILL.md` (SPEC §8.2 row 3). A dedicated
  * predicate, not a generic `.claude/skills/` prefix, so a stray file in the
- * skills tree is not mistaken for a skill definition (it stays row 3 harness).
+ * skills tree is not mistaken for a skill definition (it stays row 4 harness).
+ *
+ * The `.claude/skills/` prefix is tested on the file's *workspace-relative*
+ * path (the same nearest-enclosing-workspace frame as rows 9 to 13, SPEC §2.2),
+ * so a nested workspace's own `.claude/skills/<slug>/SKILL.md` is recognised,
+ * not just a root-level one (issue #64).
  */
-function isSkillFile(path: string): boolean {
+function isSkillFile(path: string, tree: readonly string[]): boolean {
   if (baseName(path) !== SKILL_FILE) return false;
-  return dirOf(dirOf(path)) === CANONICAL_HOMES.skill;
+  const relPath = pathWithinWorkspace(path, tree);
+  return dirOf(dirOf(relPath)) === CANONICAL_HOMES.skill;
 }
 
 /**
