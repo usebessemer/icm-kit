@@ -1,17 +1,28 @@
 /**
- * The `sanitize` projection engine, gate, and manifest (SPEC §8, support mode).
+ * The `sanitize` projection engine, gate, and manifest (SPEC §8, both modes).
  *
  * Where `project.ts` (subtask 1) only *classifies* every file into a projection
  * home and its rule, this module *applies* those rules: it turns a read
  * `Workspace` into the `GeneratedFile[]` output tree a shareable bundle is made
  * of, plus the reviewable manifest and the fail-closed gate that guard it.
  *
- * The projection is pure and disk-free: it classifies every file first, applies
- * each home's transform in memory, and returns the output tree, one manifest
- * entry per source file, and a gate verdict. The CLI (`cli.ts`) is the only
- * layer that touches disk: it aborts on a failing gate *before* any file is
- * written (classify-all-first), guards a fresh `--out`, then writes through the
- * one shared writer (`defaultWriter`, reused from `init.ts`).
+ * Two modes share one pipeline (classify-all-first, fail-closed, deterministic)
+ * and every transform below:
+ * - `projectSupport` (§8.4): the whole-workspace remote-support bundle. Every
+ *   file is classified and projected under its §8.2 rule.
+ * - `projectExtract` (§8.5): the scoped capability harvest. Only the `--include`
+ *   set (each file under its §8.2 rule) and the *minimal routing context* (the
+ *   enclosing `CLAUDE.md`(s) up to the audit root, forced to `shape_only` so
+ *   routing survives but the router's personal content does not) are emitted;
+ *   everything else is intentionally omitted. Public-destined, so §8.6's
+ *   independent leak-check is a required downstream stage the manifest states.
+ *
+ * The projection is pure and disk-free: it classifies every in-scope file first,
+ * applies each home's transform in memory, and returns the output tree, one
+ * manifest entry per in-scope file, and a gate verdict. The CLI (`cli.ts`) is
+ * the only layer that touches disk: it aborts on a failing gate *before* any
+ * file is written (classify-all-first), guards a fresh `--out`, then writes
+ * through the one shared writer (`defaultWriter`, reused from `init.ts`).
  *
  * The four emitting transforms (SPEC §8.2):
  * - `pass_through`  -> the file verbatim (LF-normalized on read); a binary is
@@ -35,11 +46,12 @@
  */
 
 import type { GeneratedFile } from './init.js';
-import { SPEC_VERSION } from './model.js';
+import { ROOT_IDENTITY_FILE, SPEC_VERSION } from './model.js';
 import type { ProjectionHome, ProjectionRule } from './model.js';
 import { classifyProjection } from './project.js';
 import { splitSections } from './parse.js';
-import type { Workspace } from './workspace.js';
+import { containingRoots } from './paths.js';
+import type { Workspace, WorkspaceFile } from './workspace.js';
 
 /** The projection modes (SPEC §8). Only `support` is built in this subtask. */
 export const PROJECTION_MODES = ['support', 'extract'] as const;
@@ -90,15 +102,32 @@ export interface GateResult {
   readonly leaked: readonly string[];
 }
 
-/** The whole result of projecting a workspace in support mode (SPEC §8). */
+/** The whole result of projecting a workspace (SPEC §8, either mode). */
 export interface ProjectionResult {
   readonly mode: ProjectionMode;
   readonly specVersion: string;
-  /** One entry per source file, in the workspace's sorted tree order. */
+  /**
+   * One entry per in-scope source file, in the workspace's sorted tree order.
+   * Support mode's scope is every file; extract mode's scope is the include set
+   * plus its routing chain (§8.5), so an out-of-scope file has no entry.
+   */
   readonly entries: readonly ProjectionEntry[];
   /** The projected output tree (emitted files only), sorted by path. */
   readonly files: readonly GeneratedFile[];
   readonly gate: GateResult;
+  /**
+   * Extract mode only (§8.5): the requested `--include` set, normalized. The
+   * manifest lists it so a reviewer sees the scope that was asked for.
+   * Undefined in support mode.
+   */
+  readonly includes?: readonly string[];
+  /**
+   * Extract mode only (§8.5): the routing `CLAUDE.md` paths the include set
+   * pulled in (shape-redacted), sorted. The manifest lists these so a reviewer
+   * sees exactly what the scope pulled beyond the includes. Undefined in
+   * support mode.
+   */
+  readonly routing?: readonly string[];
 }
 
 /** The redaction marker written in place of removed prose (SPEC §8.2). */
@@ -110,14 +139,25 @@ function redactionMarker(count: number, unit: 'lines' | 'rows'): string {
 // Typed errors (init-style: the CLI prints these cleanly, never a stack trace)
 // ---------------------------------------------------------------------------
 
-/** Thrown when `--mode` is anything support mode does not (yet) implement. */
+/** Thrown when `--mode` is neither of the two implemented modes. */
 export class UnsupportedModeError extends Error {
   constructor(public readonly mode: string) {
-    const known = mode === 'extract'
-      ? `mode "extract" is not built yet (it arrives in a later subtask)`
-      : `unknown mode "${mode}"`;
-    super(`${known}; use --mode support`);
+    super(`unknown mode "${mode}"; use --mode support or --mode extract`);
     this.name = 'UnsupportedModeError';
+  }
+}
+
+/**
+ * Thrown when `--mode extract` is run with no `--include` path: extract has no
+ * meaningful default scope, so an empty include set is a typed user error, not
+ * an empty projection (SPEC §8.5). Nothing is written.
+ */
+export class IncludeRequiredError extends Error {
+  constructor() {
+    super(
+      'extract mode requires at least one --include <path>: pass --include <paths...> (a file or a directory prefix)',
+    );
+    this.name = 'IncludeRequiredError';
   }
 }
 
@@ -174,53 +214,144 @@ export class SecretLeakError extends Error {
  */
 export function projectSupport(workspace: Workspace): ProjectionResult {
   const { tree, claudeMd, files } = workspace;
-
-  const entries: ProjectionEntry[] = [];
-  const outFiles: GeneratedFile[] = [];
-  const unclassified: string[] = [];
-  const secretsPresent: string[] = [];
-  const secretContents: string[] = [];
+  const acc = newAccumulator();
 
   for (const file of files) {
     const c = classifyProjection(file.path, tree, claudeMd);
-
     if (c.unclassified) {
-      unclassified.push(file.path);
-      entries.push({
-        path: file.path,
-        home: null,
-        rule: null,
-        disposition: 'omit',
-        note: 'unclassified (fail closed): no §8.2 rule matched',
+      accumulateUnclassified(acc, file.path);
+      continue;
+    }
+    accumulate(acc, projectClassified(file, c.home as ProjectionHome, c.rule as ProjectionRule));
+  }
+
+  return { mode: 'support', specVersion: SPEC_VERSION, ...finishAccumulator(acc) };
+}
+
+/**
+ * Project a scoped capability harvest (SPEC §8.5): the `--include` set (each
+ * file under its §8.2 rule) plus the *minimal routing context* that lets it
+ * stand alone, and nothing else.
+ *
+ * The minimal routing context is, for every included file, the `CLAUDE.md` at
+ * each of its containing workspace roots, from the nearest enclosing root up to
+ * the audit root (the §2.2 routing frame `containingRoots` closes over, the
+ * same one `nearestRoot` / `routingDepth` are built on). Each routing
+ * `CLAUDE.md` is forced to `shape_only`, overriding its support-mode
+ * `pass_through`: routing survives (the include is not orphaned) but the
+ * router's personal identity does not, because extract output is
+ * public-destined. A file that is both an include target and a routing ancestor
+ * is shape-redacted (routing wins), so no `CLAUDE.md` is ever emitted verbatim.
+ *
+ * Only in-scope files (includes + routing) are classified, projected, and
+ * accounted for; everything else is intentionally omitted and absent from the
+ * output and the manifest. The gate is support mode's, scoped to those files:
+ * an unclassified *included* file still fails closed; an out-of-scope
+ * unclassified file cannot, because extract never emits it.
+ *
+ * Pure and disk-free, like `projectSupport`: it never writes and never throws
+ * on a failing gate. The caller inspects `result.gate` (or `assertGate`).
+ */
+export function projectExtract(
+  workspace: Workspace,
+  includePaths: readonly string[],
+): ProjectionResult {
+  const { tree, claudeMd, files } = workspace;
+  const includes = normalizeIncludes(includePaths);
+
+  // The routing chain: every containing-root CLAUDE.md of every included file.
+  const routingPaths = new Set<string>();
+  for (const file of files) {
+    if (!matchesInclude(file.path, includes)) continue;
+    for (const rootDir of containingRoots(file.path, tree)) {
+      routingPaths.add(routingClaudePath(rootDir));
+    }
+  }
+
+  const acc = newAccumulator();
+  const routing: string[] = [];
+
+  for (const file of files) {
+    const isRouting = routingPaths.has(file.path);
+    const isTarget = matchesInclude(file.path, includes);
+    if (!isRouting && !isTarget) continue; // out of scope: not emitted, not accounted
+
+    // Routing wins over an include target: a CLAUDE.md that is both is shaped,
+    // never passed through, so extract emits no verbatim router (§8.5).
+    if (isRouting) {
+      const projected = projectClassified(file, 'router', 'shape_only');
+      accumulate(acc, {
+        ...projected,
+        entry: { ...projected.entry, note: `routing context (shape_only): ${projected.entry.note}` },
       });
+      if (projected.file) routing.push(file.path);
       continue;
     }
 
-    const rule = c.rule as ProjectionRule;
-    const home = c.home as ProjectionHome;
-
-    if (rule === 'omit_assert_absence') {
-      secretsPresent.push(file.path);
-      if (file.isText && file.content.trim() !== '') secretContents.push(file.content);
-      entries.push(omitEntry(file.path, home, rule, 'secret-shaped'));
+    const c = classifyProjection(file.path, tree, claudeMd);
+    if (c.unclassified) {
+      accumulateUnclassified(acc, file.path);
       continue;
     }
-    if (rule === 'omit') {
-      entries.push(omitEntry(file.path, home, rule, 'archived content'));
-      continue;
-    }
+    accumulate(acc, projectClassified(file, c.home as ProjectionHome, c.rule as ProjectionRule));
+  }
 
-    // Emitting rules: pass_through / shape_only / redact_instance. A binary is
-    // never projected in v1: it is omitted with a manifest line, not silently
-    // dropped (SPEC §8.2, pass_through note).
-    if (!file.isText) {
-      entries.push(omitEntry(file.path, home, rule, 'binary (not projected in v1)'));
-      continue;
-    }
+  return {
+    mode: 'extract',
+    specVersion: SPEC_VERSION,
+    ...finishAccumulator(acc),
+    includes,
+    routing,
+  };
+}
 
-    const projected = applyRule(rule, file.content);
-    outFiles.push({ path: file.path, content: projected.content });
-    entries.push({
+// ---------------------------------------------------------------------------
+// Shared projection machinery (both modes)
+// ---------------------------------------------------------------------------
+
+/** The pieces one in-scope file contributes to a projection accumulator. */
+interface ProjectedFile {
+  readonly entry: ProjectionEntry;
+  /** The emitted file, for an emitting rule; absent for an omit. */
+  readonly file?: GeneratedFile;
+  /** True when the file is a secret present in source (`omit_assert_absence`). */
+  readonly secretPresent?: boolean;
+  /** The secret's content, for the absence assertion (a non-blank text secret). */
+  readonly secretContent?: string;
+}
+
+/**
+ * Project one classified file into its manifest entry plus, for an emitting
+ * rule, the emitted file (and, for a secret, its content for the absence
+ * assertion). Shared by both modes so support and extract cannot drift on how a
+ * §8.2 rule turns a source file into output (SPEC §8.4).
+ */
+function projectClassified(
+  file: WorkspaceFile,
+  home: ProjectionHome,
+  rule: ProjectionRule,
+): ProjectedFile {
+  if (rule === 'omit_assert_absence') {
+    const isLiveSecret = file.isText && file.content.trim() !== '';
+    return {
+      entry: omitEntry(file.path, home, rule, 'secret-shaped'),
+      secretPresent: true,
+      secretContent: isLiveSecret ? file.content : undefined,
+    };
+  }
+  if (rule === 'omit') {
+    return { entry: omitEntry(file.path, home, rule, 'archived content') };
+  }
+  // Emitting rules: pass_through / shape_only / redact_instance. A binary is
+  // never projected in v1: it is omitted with a manifest line, not silently
+  // dropped (SPEC §8.4, pass_through note).
+  if (!file.isText) {
+    return { entry: omitEntry(file.path, home, rule, 'binary (not projected in v1)') };
+  }
+  const projected = applyRule(rule, file.content);
+  return {
+    file: { path: file.path, content: projected.content },
+    entry: {
       path: file.path,
       home,
       rule,
@@ -229,18 +360,86 @@ export function projectSupport(workspace: Workspace): ProjectionResult {
       sourceLines: projected.sourceLines,
       keptLines: projected.keptLines,
       survived: projected.survived,
-    });
-  }
+    },
+  };
+}
 
-  const leaked = detectLeaks(secretContents, outFiles);
+/** The mutable accumulator both modes fold their in-scope files into. */
+interface Accumulator {
+  readonly entries: ProjectionEntry[];
+  readonly outFiles: GeneratedFile[];
+  readonly unclassified: string[];
+  readonly secretsPresent: string[];
+  readonly secretContents: string[];
+}
+
+function newAccumulator(): Accumulator {
+  return { entries: [], outFiles: [], unclassified: [], secretsPresent: [], secretContents: [] };
+}
+
+/** Fold one projected file's entry, emitted file, and secret facts in. */
+function accumulate(acc: Accumulator, projected: ProjectedFile): void {
+  acc.entries.push(projected.entry);
+  if (projected.file) acc.outFiles.push(projected.file);
+  if (projected.secretPresent) acc.secretsPresent.push(projected.entry.path);
+  if (projected.secretContent !== undefined) acc.secretContents.push(projected.secretContent);
+}
+
+/** Record a fail-closed unclassified file (SPEC §8.2 final row). */
+function accumulateUnclassified(acc: Accumulator, path: string): void {
+  acc.unclassified.push(path);
+  acc.entries.push({
+    path,
+    home: null,
+    rule: null,
+    disposition: 'omit',
+    note: 'unclassified (fail closed): no §8.2 rule matched',
+  });
+}
+
+/** Close an accumulator into the entries, output tree, and gate verdict. */
+function finishAccumulator(acc: Accumulator): {
+  entries: ProjectionEntry[];
+  files: GeneratedFile[];
+  gate: GateResult;
+} {
+  const leaked = detectLeaks(acc.secretContents, acc.outFiles);
   const gate: GateResult = {
-    ok: unclassified.length === 0 && leaked.length === 0,
-    unclassified,
-    secretsPresent,
+    ok: acc.unclassified.length === 0 && leaked.length === 0,
+    unclassified: acc.unclassified,
+    secretsPresent: acc.secretsPresent,
     leaked,
   };
+  return { entries: acc.entries, files: acc.outFiles, gate };
+}
 
-  return { mode: 'support', specVersion: SPEC_VERSION, entries, files: outFiles, gate };
+// ---------------------------------------------------------------------------
+// Extract-mode scope helpers (SPEC §8.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize `--include` paths for matching: collapse `.`/`..` and strip
+ * trailing slashes, so `.claude/skills/example/` and `./.claude/skills/example`
+ * both become `.claude/skills/example`. An empty include (`.` or `/`, which
+ * normalizes to `''`) means the whole workspace root and matches every file.
+ */
+function normalizeIncludes(includePaths: readonly string[]): string[] {
+  return includePaths.map((p) =>
+    p
+      .split('/')
+      .filter((seg) => seg !== '' && seg !== '.')
+      .join('/'),
+  );
+}
+
+/** True when `path` is the include itself or sits beneath a directory include. */
+function matchesInclude(path: string, includes: readonly string[]): boolean {
+  return includes.some((inc) => inc === '' || path === inc || path.startsWith(`${inc}/`));
+}
+
+/** The `CLAUDE.md` path at a workspace root dir (`''` is the audit root). */
+function routingClaudePath(rootDir: string): string {
+  return rootDir === '' ? ROOT_IDENTITY_FILE : `${rootDir}/${ROOT_IDENTITY_FILE}`;
 }
 
 /**
@@ -537,6 +736,29 @@ const BOUNDARY_NOTE = [
 ].join('\n');
 
 /**
+ * The extract-mode boundary + required-leak-check protocol (SPEC §8.5, §8.6).
+ * Extract output is public-destined, so the manifest states plainly that the
+ * machine pass is necessary but not sufficient: an independent adversarial
+ * leak-check is a required pipeline stage, referencing the on-record precedent.
+ */
+const EXTRACT_BOUNDARY_NOTE = [
+  'Boundary and required leak-check (extract mode; read before you push):',
+  '  This is a SCOPED projection for PUBLIC-destined output. It emits ONLY the',
+  '  include set (each file under its projection rule) and the minimal routing',
+  '  context (the enclosing CLAUDE.md(s) up to the audit root, shape-redacted);',
+  '  everything else in the workspace is intentionally omitted. Pass_through',
+  '  targets (a skill SKILL.md, a shared reference) are emitted VERBATIM: the',
+  '  tool does not scan them for arbitrary names.',
+  '  For public output an independent adversarial leak-check is a REQUIRED',
+  '  pipeline stage, not an option. The machine pass mechanizes the redaction',
+  '  RULES; the leak-check verifies the OUTCOME. Precedent (2026-07-05): an',
+  "  author's own sanitization pass missed a live email, a raw spec, and real",
+  '  customer names; independent eyes caught all three pre-push. The machine pass',
+  '  FEEDS the adversarial pass, it never SUBSTITUTES for it. Ratification stays',
+  '  human: review this manifest and the tree, run the leak-check, then copy out.',
+].join('\n');
+
+/**
  * Render the reviewable manifest for a projection (SPEC §8): a summary header
  * (counts per rule, the SPEC version, the gate verdict), the honest boundary
  * note, and one line per source file with its applied rule and, for a
@@ -544,20 +766,33 @@ const BOUNDARY_NOTE = [
  * result renders the same string.
  */
 export function renderManifest(result: ProjectionResult): string {
-  const { entries, gate, specVersion, files } = result;
+  const { mode, entries, gate, specVersion, files } = result;
   const lines: string[] = [];
 
-  lines.push(`icm-kit sanitize --mode support (SPEC ${specVersion})`);
+  lines.push(`icm-kit sanitize --mode ${mode} (SPEC ${specVersion})`);
   lines.push('');
 
   const byRule = countByRule(entries);
   lines.push('Summary:');
-  lines.push(`  ${entries.length} file(s) classified; ${files.length} emitted, ${
+  const scope = mode === 'extract' ? 'in-scope file(s) (include set + routing chain)' : 'file(s) classified';
+  lines.push(`  ${entries.length} ${scope}; ${files.length} emitted, ${
     entries.length - files.length
   } omitted.`);
   lines.push(`  pass_through: ${byRule.pass_through}   shape_only: ${byRule.shape_only}   redact_instance: ${byRule.redact_instance}`);
   lines.push(`  omit: ${byRule.omit}   omit_assert_absence (secret): ${byRule.omit_assert_absence}   unclassified: ${byRule.unclassified}`);
   lines.push('');
+
+  // Extract mode names its scope explicitly (SPEC §8.5): the include set asked
+  // for, and every routing CLAUDE.md the includes pulled in (shape-redacted), so
+  // a reviewer sees exactly what the scope did and did not pull.
+  if (mode === 'extract') {
+    lines.push('Scope (extract):');
+    lines.push('  --include:');
+    for (const inc of result.includes ?? []) lines.push(`    ${inc === '' ? '. (whole workspace root)' : inc}`);
+    lines.push(`  routing context pulled in (shape_only):${(result.routing ?? []).length === 0 ? ' none' : ''}`);
+    for (const r of result.routing ?? []) lines.push(`    ${r}`);
+    lines.push('');
+  }
 
   lines.push(`Gate: ${gate.ok ? 'PASS' : 'FAIL'}`);
   lines.push(
@@ -578,7 +813,7 @@ export function renderManifest(result: ProjectionResult): string {
   }
   lines.push('');
 
-  lines.push(BOUNDARY_NOTE);
+  lines.push(mode === 'extract' ? EXTRACT_BOUNDARY_NOTE : BOUNDARY_NOTE);
   lines.push('');
 
   lines.push('Files:');
