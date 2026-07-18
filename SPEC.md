@@ -1,6 +1,6 @@
 # ICM Spec: v1.5
 
-This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the tools in `icm-kit`: `init`, which generates structures that satisfy the spec; `audit`, which checks structures against it; and `sanitize`, which projects a private workspace into a shareable form (its classification foundation is §8; its CLI and transforms are staged for later versions).
+This document is the machine-checkable encoding of the architecture described in *Context as Architecture* (usebessemer/research, 2026-05-29). It is the shared contract between the tools in `icm-kit`: `init`, which generates structures that satisfy the spec; `audit`, which checks structures against it; and `sanitize`, which projects a private workspace into a shareable form (its classification foundation and both modes, `support` and `extract`, are specified in §8).
 
 The spec is language-agnostic. Any implementation should produce equivalent classifications and findings for the same workspace.
 
@@ -411,7 +411,7 @@ Homes and rules are assigned by the following table, **matched in order, first m
 | 11 | workspace-relative path `references/voice.md` | `voice` | `shape_only` |
 | 12 | `references/**/*.md`, all other (workspace-relative) | `reference` | `pass_through` |
 | 13 | `board/**`, `registry.md`, `decisions/**` (incl. `log.md`), `channels/**` (workspace-relative) | `instance_record` | `redact_instance` |
-| — | anything matching no rule above | null | `unclassified` (fail closed; a hard error downstream) |
+| - | anything matching no rule above | null | `unclassified` (fail closed; a hard error downstream) |
 
 The final row is the **fail-closed** guarantee: a file matching no rule is `unclassified` (its home and rule are null), a distinct signal the caller treats as a hard error, never a silent pass-through. The `ProjectionHome` and `ProjectionRule` unions and the home-to-rule map in the rule model mirror this table exactly (the "spec wins on disagreement" discipline, as the `W#` / `F#` maps do for §3 / §4).
 

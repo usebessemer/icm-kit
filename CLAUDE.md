@@ -4,12 +4,13 @@ The TypeScript implementation of icm-kit, the OSS tool that operationalizes the 
 
 ## What this project is
 
-A CLI with two commands sharing a single ICM rule model:
+A CLI with three commands sharing a single ICM rule model:
 
-- `init`: scaffold a new ICM-compliant workspace.
+- `init`: scaffold a new ICM-compliant workspace that audits green. `--role <name>` also scaffolds a minimal L1 role workspace (§7.6); `--class devlead` instead scaffolds an audit-green L1 delegating-lead binder (§7.9); the two flags are mutually exclusive.
 - `audit`: check an existing workspace against the rule model and report violations.
+- `sanitize`: project a private workspace into a shareable form: `--mode support` (whole-workspace remote-support bundle) or `--mode extract --include <paths...>` (scoped capability harvest); fail-closed on secrets, deterministic.
 
-The rule model encodes the paper's classification (routing level, content type, load pattern), well-formedness rules (`W1` to `W7`), and failure modes (`F1` to `F9`, contiguous) in a single language-agnostic spec that both commands consume.
+The rule model encodes the paper's classification (routing level, content type, load pattern), well-formedness rules (`W1` to `W7`), failure modes (`F1` to `F9`, contiguous), the generation contract (§7), and the projection contract (§8) in a single language-agnostic spec that all three commands consume.
 
 ## Source of truth
 
@@ -44,11 +45,11 @@ Scripts:
 - No em dashes in code, comments, docs, or commit messages. Use colons or semicolons instead.
 - TypeScript strict mode is on; honour it.
 - Conventional Commits format for commit messages.
-- Branching follows the org pattern: `feature/<short-description>` off `main`; PR for substantive work; small fixes may commit directly.
+- Branching follows the org pattern: `feature/<short-description>` off `develop`; one PR per issue, reviewed before merge (see "Working with the overseer" below). `develop -> main` at version cuts only.
 
 ## Current focus
 
-Encode the rule model in TS types against `SPEC.md` (the v0.1 to v0.2 step). Once the rule model is in place, build the classifier, then `init`, then `audit`. Scaffolding (package.json, tsconfig, eslint, vitest, commander stubs) is already in.
+v1.5 ships all three commands end-to-end against the spec: `audit`, `init` (with the `--role` and `--class devlead` expansions), and `sanitize` (`support` + `extract` modes). Current work is hardening and calibration; the next spec extension is the `--domain` axis for the class binder, deferred until a second built lead-domain forces it (§7.9).
 
 ## Working with the overseer (L0)
 
@@ -63,7 +64,7 @@ You are a **dev leaf** in Stu's OSS stream: you author code here against the Git
 Conventions: branch `feature/* -> develop -> main`, one PR per issue, reviewed before merge. **No `Co-Authored-By: Claude` trailer** on any commit. Test-first. The spec wins on disagreement (see Development discipline above).
 
 ## Dev-leaf task intake (you are a CodeExecutor leaf for this repo)
-On launch, find your task — do not wait for a pasted brief:
+On launch, find your task, do not wait for a pasted brief:
 1. `gh issue list --label dev-ready --state open` → work that issue (lowest number if several; if none, ask).
 2. `gh issue view <n>` → the body IS your spec, acceptance criteria, branch, and version target.
-3. Build per this repo's conventions (spec-driven; branch flow; no Claude trailer). Clarifications/progress on the PR/issue, never to the human. Open the PR, re-request the lead's review. The lead merges feature→develop once green — you never self-merge.
+3. Build per this repo's conventions (spec-driven; branch flow; no Claude trailer). Clarifications/progress on the PR/issue, never to the human. Open the PR, re-request the lead's review. The lead merges feature->develop once green; you never self-merge.
