@@ -8,6 +8,8 @@ import {
   guardTarget,
   InvalidRoleError,
   NonEmptyTargetError,
+  RoleClassConflictError,
+  UnknownClassError,
   writeWorkspace,
 } from './init.js';
 import {
@@ -30,7 +32,7 @@ const program = new Command();
 program
   .name('icm-kit')
   .description('Tooling for the Interpretable Context Methodology')
-  .version('1.4.0');
+  .version('1.5.0');
 
 program
   .command('init')
@@ -38,20 +40,31 @@ program
   .argument('[target]', 'directory to scaffold into', '.')
   .option('--overwrite', 'write into a non-empty target instead of refusing it')
   .option('--role <name>', 'also scaffold a minimal L1 role workspace (§7.6)')
-  .action((target: string, options: { overwrite?: boolean; role?: string }) => {
+  .option('--class <name>', 'instead scaffold a minimal L1 delegating-lead class workspace (§7.9); mutually exclusive with --role')
+  .action((target: string, options: { overwrite?: boolean; role?: string; class?: string }) => {
     const root = resolve(target);
     try {
       const written = writeWorkspace(root, {
         overwrite: options.overwrite,
         role: options.role,
+        class: options.class,
       });
       console.log(`Scaffolded ${written.length} file(s) into ${root}.`);
-      const roleNote = options.role ? ` with role "${options.role}"` : '';
-      console.log(`ICM-compliant workspace ready${roleNote}. Run icm-kit audit to verify.`);
+      const streamNote = options.class
+        ? ` with class "${options.class}"`
+        : options.role
+          ? ` with role "${options.role}"`
+          : '';
+      console.log(`ICM-compliant workspace ready${streamNote}. Run icm-kit audit to verify.`);
     } catch (err) {
       // Every init failure is user-facing, not a crash: report it on stderr and
       // set a non-zero exit code rather than surface an unhandled stack trace.
-      if (err instanceof NonEmptyTargetError || err instanceof InvalidRoleError) {
+      if (
+        err instanceof NonEmptyTargetError ||
+        err instanceof InvalidRoleError ||
+        err instanceof UnknownClassError ||
+        err instanceof RoleClassConflictError
+      ) {
         // Known user errors: the message is already actionable as-is.
         console.error(`init: ${err.message}`);
       } else {

@@ -3,12 +3,16 @@
 Tooling for the Interpretable Context Methodology (ICM), an architecture for organizing the folders and files an agent reads. icm-kit provides three commands sharing a single rule model:
 
 - **`audit`** (implemented): check an existing workspace against the rule model and report violations of the ICM failure modes.
-- **`init`** (implemented): scaffold a new ICM-compliant workspace that audits green.
+- **`init`** (implemented): scaffold a new ICM-compliant workspace that audits green. `--role <name>` also scaffolds a minimal L1 role workspace; `--class devlead` instead scaffolds an audit-green L1 delegating-lead binder (a `(Lead, Standing)` workspace pre-filled with the reusable delegating-lead contract). `--role` and `--class` are mutually exclusive. See SPEC §7.6 / §7.9.
 - **`sanitize`** (implemented): project a private workspace into a shareable form. `--mode support` produces a whole-workspace remote-support bundle; `--mode extract --include <paths...>` produces a scoped capability harvest (a named slice plus its minimal routing context). Both classify every file first, fail closed on anything they cannot home, omit secrets and assert their absence, and are deterministic.
 
 ### The leak-check is a required stage, not an option
 
 `sanitize` mechanizes the redaction **rules**; it does not verify the **outcome**. For any **public-destined** output (the `extract` mode's purpose), an **independent adversarial leak-check is a required pipeline stage.** The tool redacts the homes where private instance concentrates and emits `pass_through` targets (a skill's `SKILL.md`, a shared reference) verbatim; it does not scan those for arbitrary names. The precedent is on record (2026-07-05): a self-run sanitization pass on public material missed a live email address, a raw internal spec, and real customer names, all caught by independent eyes before the push. The invariant: **the machine pass feeds the adversarial pass; it never substitutes for it.** See [`SPEC.md`](SPEC.md) §8.6.
+
+### The delegating-lead binder (`init --class devlead`)
+
+`init --class devlead` stamps a ready-to-run L1 delegating-lead workspace below an existing root: a `(Lead, Standing)` cell that holds a board, routes work to a dev leaf, and surfaces decisions without authoring the work itself. It emits exactly two files under `workspaces/<class>/` (the delegating-lead charter `CLAUDE.md` and a non-directive `context/leaf.md`) and nothing else; routing depth stays at 2 and the synthesized tree audits to zero findings by construction. The binder is the class analog of `--role`: where `--role` emits a generic minimal stream, `--class` pre-fills the reusable delegating-lead contract. v1 ships one class value, `devlead`. It is mutually exclusive with `--role`, and it never mutates `registry.md` or any other existing file (adding the registry row is documented as a one-line operator action in the emitted charter). The binder complements ignition rather than competing with it: ignition stands up the root once on a fresh install; the binder stamps an L1 class below an already-existing root, repeatedly. See [`SPEC.md`](SPEC.md) §7.9.
 
 ## Background
 
@@ -16,16 +20,16 @@ ICM is described in [*Context as Architecture*](https://github.com/usebessemer/r
 
 icm-kit is the applied counterpart: a tool that operationalizes the paper's classification and failure modes.
 
-## Status: v1.0
+## Status: v1.5
 
-`audit` and `init` both ship end-to-end. `audit` runs the §2.5 file classifier and the W1-W7 / F1-F9 rule set, validated against a real production workspace (the dry run against it drove the v0.2 to v0.5 hardening and surfaced the fork rules landing as v0.6+). v0.6 adds `F8` DUPLICATION, a whole-workspace check for the same prose in two routed homes; v0.7 adds `F9` SUPERSEDED_BUT_LIVE, flagging a live-routed file that opens with a superseded/deprecated banner; v0.8 adds `F7` KIT_BOILERPLATE, the first git-history rule, flagging a file inherited from the workspace's fork point and never adapted since: with it the failure-mode codes are now contiguous `F1` through `F9`; v0.9 normalizes `F3` STALE_CONTENT pointers (relative refs from a nested CLAUDE.md now resolve against the tree's normalized paths) and dedups `F3` to one finding per stale pointer. `init` (v0.15 to v1.0) generates the audit-green golden template: the normative §7 generation contract and the `src/templates/` byte tree, so a freshly scaffolded workspace audits to zero findings. v1.0 lands both tools end-to-end against the spec, validated against the production AIOS fork and a clean generated workspace. Typing agent *roles*, not just files (per the [agent-role topology](https://github.com/usebessemer/research/blob/main/theory/agent-role-topology.md)), is a forthcoming SPEC extension.
+All three commands ship end-to-end. `audit` runs the §2.5 file classifier and the W1-W7 / F1-F9 rule set, validated against a real production workspace. `init` generates the audit-green golden template (the normative §7 generation contract and the `src/templates/` byte tree), and gains two expansions: `--role <name>` scaffolds a minimal L1 role workspace (§7.6), and `--class devlead` scaffolds an audit-green L1 delegating-lead binder (§7.9). `sanitize` projects a private workspace into a shareable form: `--mode support` produces a whole-workspace remote-support bundle and `--mode extract --include <paths...>` produces a scoped capability harvest, both fail-closed on secrets and deterministic (§8).
 
-- [`SPEC.md`](SPEC.md): the formal model (v1.0), well-formedness rules, failure modes, and stage-contract requirements.
+- [`SPEC.md`](SPEC.md): the formal model (v1.5), well-formedness rules, failure modes, stage-contract requirements, the generation contract (§7), and the projection/sanitize contract (§8).
 
 ## Roadmap
 
-- **v0.1 to v1.0** (shipped): the rule model, the §2.5 classifier, `audit`, and `init`, all hardened against a real production workspace. `init` now ships alongside `audit`: it generates the audit-green golden template, and both tools were validated against the production AIOS fork and a clean generated workspace.
-- **next**: the role-layer SPEC extension (typing agent *roles*, not just files).
+- **v0.1 to v1.5** (shipped): the rule model, the §2.5 classifier, `audit`, `init` (with `--role` and `--class devlead`), and `sanitize` (`support` + `extract` modes), all hardened against a real production workspace.
+- **next**: a second built lead-domain unlocks the deferred `--domain` axis for the class binder (§7.9); calibration of the F1/F5 thresholds against more real trees.
 
 ## Development
 

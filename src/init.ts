@@ -48,8 +48,25 @@ export interface WriteWorkspaceOptions {
   readonly overwrite?: boolean;
   /** Also emit a minimal L1 role workspace under `workspaces/<role>/` (§7.6). */
   readonly role?: string;
+  /**
+   * Instead emit a minimal L1 delegating-lead class workspace under
+   * `workspaces/<class>/` (§7.9). Mutually exclusive with `role`.
+   */
+  readonly class?: string;
   /** The disk-write seam; defaults to the real UTF-8 LF writer. */
   readonly writer?: FileWriter;
+}
+
+/**
+ * The role/class selection for {@link assembleFiles}: at most one of `role` /
+ * `class` may be set. A class is a specialised role (SPEC §7.9), so stacking the
+ * two is meaningless and refused.
+ */
+export interface AssembleOptions {
+  /** Emit a minimal L1 role workspace (§7.6). */
+  readonly role?: string;
+  /** Emit a minimal L1 delegating-lead class workspace (§7.9). */
+  readonly class?: string;
 }
 
 /**
@@ -75,6 +92,31 @@ export class InvalidRoleError extends Error {
   }
 }
 
+/**
+ * Thrown when `--class` names a class the binder does not know. v1 ships exactly
+ * one class value, `devlead` (SPEC §7.9); any other value is a user error, not a
+ * silent no-op. The CLI catches this to print a clean stderr line.
+ */
+export class UnknownClassError extends Error {
+  constructor(public readonly className: string) {
+    super(`unknown class: ${JSON.stringify(className)} (the only class in v1 is "devlead")`);
+    this.name = 'UnknownClassError';
+  }
+}
+
+/**
+ * Thrown when both `--role` and `--class` are given. A class is a specialised
+ * role, so the two are mutually exclusive (SPEC §7.9); passing both is a usage
+ * error refused before anything is written. The CLI catches this to print a
+ * clean stderr line and set a non-zero exit code.
+ */
+export class RoleClassConflictError extends Error {
+  constructor() {
+    super('cannot combine --role and --class: a class is a specialised role, so pass at most one');
+    this.name = 'RoleClassConflictError';
+  }
+}
+
 /** The authored template tree, resolved relative to this module (SPEC §7.2). */
 const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'templates');
 
@@ -88,6 +130,13 @@ const TEMPLATE_IGNORED_NAMES: ReadonlySet<string> = new Set(['.DS_Store']);
 const ROLE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
+ * The class values `--class` accepts. v1 ships exactly one, `devlead` (SPEC
+ * §7.9); a domain axis (a registry of class values) stays deferred until a
+ * second built lead-domain forces it.
+ */
+const KNOWN_CLASSES: ReadonlySet<string> = new Set(['devlead']);
+
+/**
  * Generate the canonical workspace at `target` and return the files written.
  *
  * Resolves the §7.2 template tree, applies the `--role` expansion when a role
@@ -99,7 +148,7 @@ export function writeWorkspace(
   target: string,
   options: WriteWorkspaceOptions = {},
 ): GeneratedFile[] {
-  const files = assembleFiles(options.role);
+  const files = assembleFiles({ role: options.role, class: options.class });
   guardTarget(target, options.overwrite ?? false);
   const writer = options.writer ?? defaultWriter;
   writer(target, files);
@@ -108,19 +157,36 @@ export function writeWorkspace(
 
 /**
  * Resolve the template tree into the ordered file set to write, applying the
- * role expansion. Pure given the templates on disk: no target is touched, so a
- * capturing writer can exercise the whole assembly without a disk write.
+ * `--role` (§7.6) or `--class` (§7.9) expansion. Pure given the templates on
+ * disk: no target is touched, so a capturing writer can exercise the whole
+ * assembly without a disk write.
+ *
+ * At most one of `role` / `class` may be given; both together throws
+ * `RoleClassConflictError` (SPEC §7.9). The guard lives here rather than at the
+ * CLI so every caller of the assembler gets it, and it runs before any file is
+ * written so a rejected combination scaffolds nothing.
  */
-export function assembleFiles(role?: string): GeneratedFile[] {
-  const base = readTemplates();
-  if (role === undefined) return sortByPath(base);
-
-  if (!ROLE_NAME.test(role) || role === '.' || role === '..') {
-    throw new InvalidRoleError(role);
+export function assembleFiles(options: AssembleOptions = {}): GeneratedFile[] {
+  const { role, class: className } = options;
+  if (role !== undefined && className !== undefined) {
+    throw new RoleClassConflictError();
   }
-  // A role fills `workspaces/`, so the empty-dir marker is no longer needed.
+
+  const base = readTemplates();
+  if (role === undefined && className === undefined) return sortByPath(base);
+
+  // A role or a class fills `workspaces/`, so the empty-dir marker is dropped.
   const withoutMarker = base.filter((f) => f.path !== WORKSPACES_GITKEEP);
-  return sortByPath([...withoutMarker, ...roleFiles(role)]);
+
+  if (className !== undefined) {
+    if (!KNOWN_CLASSES.has(className)) throw new UnknownClassError(className);
+    return sortByPath([...withoutMarker, ...classFiles(className)]);
+  }
+
+  if (!ROLE_NAME.test(role!) || role === '.' || role === '..') {
+    throw new InvalidRoleError(role!);
+  }
+  return sortByPath([...withoutMarker, ...roleFiles(role!)]);
 }
 
 /**
@@ -158,6 +224,85 @@ This role's situational memory lives in [\`context/\`](context/): who the work i
 ## How you work
 
 You surface options and draft; the operator decides. Keep this charter thin: route detail into \`context/\` rather than inlining it here, so the role's identity stays legible.
+`;
+}
+
+/**
+ * The minimal L1 delegating-lead class workspace (SPEC §7.9): a `CLAUDE.md`
+ * charter carrying all directive prose and a `context/leaf.md` situational
+ * pointer, and nothing else. No pre-built `references/` or `.claude/skills/`
+ * levels; routing depth stays at 2. The charter is original paraphrase of the
+ * delegating-lead contract (so F8 stays clear against the shipped
+ * `references/agent-roles.md`) and compact (so F5 variant B and the 4000-token
+ * `CLAUDE.md` cap stay clear); `leaf.md` is situational-only (no behaviour
+ * block, so W3 stays silent). The generator adds files only under
+ * `workspaces/<class>/` and never mutates a shipped file: the charter instead
+ * documents adding the `registry.md` row as a one-line operator action.
+ */
+function classFiles(className: string): GeneratedFile[] {
+  const dir = `workspaces/${className}`;
+  return [
+    { path: `${dir}/${ROOT_IDENTITY_FILE}`, content: classCharter(className) },
+    { path: `${dir}/context/leaf.md`, content: classLeaf() },
+  ];
+}
+
+function classCharter(className: string): string {
+  return `# The delegating-lead class (${className})
+
+This is an L1 delegating-lead workspace stamped below the root by \`icm-kit init --class ${className}\`. Its identity is a \`(Lead, Standing)\` cell: a lead role (it routes work rather than executing it) that stands (it persists across sessions instead of spinning up per task). Stacked on the operator's root identity, it runs a board, hands the hands-on building to a dev leaf, and carries decisions back up to the operator without authoring the work itself. Rename the folder and fill in this stream's real domain when you adopt it; what ships here is the reusable class contract, not one stream's specifics.
+
+## What a delegating lead does
+
+The class earns its keep by routing work, not by typing it. Three clauses fix the contract:
+
+- **Surface, do not decide.** Anything past the leaf's given acceptance criteria (a scope question, a spec gap, a trade-off with product weight) goes up to the operator as a flagged choice; it is never settled here on the lead's own authority.
+- **Delegate, do not author.** The building belongs to the leaf. This altitude scopes the unit of work, writes its acceptance criteria, and reviews what comes back; it does not open the editor and produce the deliverable in the leaf's place.
+- **Bubble up.** Finished work and the decisions that shaped it travel back to the operator on the shared artifacts (the board, the channels), so the state of the stream reads straight from the files.
+
+## The dev leaf
+
+This lead spawns one dev leaf that does the scoped building. Who that leaf is, the repo it works in, and how work reaches it are situational, so they live in [\`context/leaf.md\`](context/leaf.md) rather than in this charter, keeping the contract legible.
+
+## Bindings
+
+A compact table binds the reusable class to this concrete code stream. Fill each row in on adoption; keep it to one line apiece so the contract stays legible.
+
+| Binding | This stream |
+|---|---|
+| Dev leaf (repo / scope) | _(see [\`context/leaf.md\`](context/leaf.md); set on adoption)_ |
+| Board (where work is queued) | _(the board or tracker the lead routes work from; set on adoption)_ |
+| Review / handback channel | _(where the leaf returns finished work for review; set on adoption)_ |
+| Definition of done | _(the bar a unit clears before it bubbles up; set on adoption)_ |
+
+Register the stream by adding its row to the root [\`board/registry.md\`](../../board/registry.md) by hand: a one-line operator action. This charter never edits the registry or any other shipped root file; it only names the row to add.
+
+## Session start (begin)
+
+On session start, read \`handoff.md\` if it is present and continue from where it leaves off. With no handoff, fall through cleanly to the standing structure: orient from the root board, then pick up this stream's live threads and anything the leaf has handed back for review.
+
+## How you work
+
+You scope, review, and surface; the operator decides and the leaf builds. Keep this charter thin: route situational detail into [\`context/\`](context/) rather than inlining it, so the class identity stays legible at a glance.
+`;
+}
+
+function classLeaf(): string {
+  return `# The dev leaf
+
+Situational notes on the dev leaf this stream delegates to. This is a pointer, not a contract: the delegating-lead contract sits in the charter one level up ([\`../CLAUDE.md\`](../CLAUDE.md)). What belongs here is the concrete shape of the leaf as it stands today, filled in when the stream is adopted.
+
+## Who the leaf is
+
+The leaf is the executor that does the hands-on building for this stream: one scoped unit of work at a time, against acceptance criteria the lead hands down. It holds the least standing context by design and reads its task fresh each time. In a code stream it is typically a repo-scoped coding agent; in another domain it is whatever agent does the concrete work.
+
+## Where it works
+
+The leaf's home gets recorded here once it exists: the repository or workspace it operates in, the branch or board it draws its tasks from, and the channel it hands finished work back on. Until the stream is adopted this stays a placeholder.
+
+## How work reaches it
+
+Work flows down from the lead as a scoped task with its acceptance criteria attached, and flows back up as a finished unit for review. The particulars (the queue, the review cadence, the definition of done for this stream) get captured here as the stream settles into a rhythm.
 `;
 }
 
