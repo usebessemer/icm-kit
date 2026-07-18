@@ -16,11 +16,16 @@ import {
   assembleFiles,
   InvalidRoleError,
   NonEmptyTargetError,
+  RoleClassConflictError,
+  UnknownClassError,
   writeWorkspace,
   type GeneratedFile,
 } from '../src/init.js';
 import { audit } from '../src/audit.js';
 import { readWorkspace } from '../src/workspace.js';
+import { findDuplicateProse } from '../src/parse.js';
+import { DEFAULT_THRESHOLDS } from '../src/model.js';
+import { DEFAULT_TOKEN_COUNTER } from '../src/tokens.js';
 
 /**
  * The generator is the inverse of the reader: it resolves the §7.2 template
@@ -78,7 +83,7 @@ describe('assembleFiles(): the role-less default layout (§7.2)', () => {
 
 describe('assembleFiles(): the --role expansion (§7.6)', () => {
   it('adds a minimal L1 role and drops the workspaces marker', () => {
-    const paths = pathsOf(assembleFiles('example'));
+    const paths = pathsOf(assembleFiles({ role: 'example' }));
     expect(paths).toContain('workspaces/example/CLAUDE.md');
     expect(paths).toContain('workspaces/example/context/.gitkeep');
     expect(paths).not.toContain('workspaces/.gitkeep');
@@ -88,7 +93,7 @@ describe('assembleFiles(): the --role expansion (§7.6)', () => {
   });
 
   it('writes a non-empty charter naming the role', () => {
-    const charter = assembleFiles('example').find(
+    const charter = assembleFiles({ role: 'example' }).find(
       (f) => f.path === 'workspaces/example/CLAUDE.md',
     );
     expect(charter?.content).toContain('# The example role');
@@ -97,8 +102,63 @@ describe('assembleFiles(): the --role expansion (§7.6)', () => {
 
   it('rejects a role name that is not a single safe path segment', () => {
     for (const bad of ['..', '.', '', 'a/b', 'a\\b', '../evil']) {
-      expect(() => assembleFiles(bad)).toThrow(InvalidRoleError);
+      expect(() => assembleFiles({ role: bad })).toThrow(InvalidRoleError);
     }
+  });
+});
+
+describe('assembleFiles(): the --class delegating-lead binder (§7.9)', () => {
+  it('adds the minimal L1 devlead class and drops the workspaces marker', () => {
+    const paths = pathsOf(assembleFiles({ class: 'devlead' }));
+    // Exactly two files, and nothing more: the charter and a situational pointer.
+    expect(paths).toContain('workspaces/devlead/CLAUDE.md');
+    expect(paths).toContain('workspaces/devlead/context/leaf.md');
+    expect(paths).not.toContain('workspaces/.gitkeep');
+    // No pre-built references/ or .claude/skills/ level; routing depth stays 2 (§7.9).
+    expect(paths.some((p) => p.startsWith('workspaces/devlead/references/'))).toBe(false);
+    expect(paths.some((p) => p.startsWith('workspaces/devlead/.claude/'))).toBe(false);
+    // The class adds files only under workspaces/devlead/: no shipped file changes.
+    const added = paths.filter((p) => p.startsWith('workspaces/devlead/'));
+    expect(added.sort()).toEqual([
+      'workspaces/devlead/CLAUDE.md',
+      'workspaces/devlead/context/leaf.md',
+    ]);
+  });
+
+  it('writes a non-empty charter carrying the delegating-lead contract', () => {
+    const charter = assembleFiles({ class: 'devlead' }).find(
+      (f) => f.path === 'workspaces/devlead/CLAUDE.md',
+    );
+    expect(charter?.content).toContain('# The delegating-lead class (devlead)');
+    // The three-clause contract (§7.9 smallest-first: surface / delegate / bubble up).
+    expect(charter?.content).toContain('Surface, do not decide');
+    expect(charter?.content).toContain('Delegate, do not author');
+    expect(charter?.content).toContain('Bubble up');
+    expect(charter?.content.includes('\r')).toBe(false);
+  });
+
+  it('leaf.md is a situational pointer with no dense behaviour block (W3)', () => {
+    const leaf = assembleFiles({ class: 'devlead' }).find(
+      (f) => f.path === 'workspaces/devlead/context/leaf.md',
+    );
+    expect(leaf?.content).toContain('# The dev leaf');
+    expect(leaf?.content.includes('\r')).toBe(false);
+  });
+
+  it('rejects an unknown class value (only devlead is known in v1)', () => {
+    for (const bad of ['lead', 'devLead', 'executor', 'nope', '']) {
+      expect(() => assembleFiles({ class: bad })).toThrow(UnknownClassError);
+    }
+  });
+
+  it('refuses --role and --class together (mutually exclusive, §7.9)', () => {
+    expect(() => assembleFiles({ role: 'example', class: 'devlead' })).toThrow(
+      RoleClassConflictError,
+    );
+    // The conflict is caught before any known/unknown validation of either value.
+    expect(() => assembleFiles({ role: '../evil', class: 'devlead' })).toThrow(
+      RoleClassConflictError,
+    );
   });
 });
 
@@ -330,6 +390,45 @@ describe('init: the v1.0 audit-green gate (§7.1)', () => {
     });
   });
 
+  it('generates a --class devlead workspace that audits to zero findings', () => {
+    inTmp((dir) => {
+      // The core AC (SPEC §7.9): the synthesized delegating-lead workspace
+      // (workspaces/devlead/CLAUDE.md charter + a situational context/leaf.md)
+      // satisfies the §7.1 audit-green invariant. The charter is original
+      // paraphrase (F8 clear), compact (F5/F1 clear), and leaf.md is
+      // situational-only (W3 silent).
+      writeWorkspace(dir, { class: 'devlead' });
+      const findings = audit(readWorkspace(dir));
+      expect(findings, JSON.stringify(findings, null, 2)).toHaveLength(0);
+    });
+  });
+
+  it('the devlead charter is original paraphrase, not lifted from agent-roles (F8)', () => {
+    // Fix A: pin that the charter shares no duplicate prose block with the
+    // shipped references/agent-roles.md, using findDuplicateProse's real
+    // signature (a DuplicationInput[] plus DuplicationOptions), not two strings.
+    const files = assembleFiles({ class: 'devlead' });
+    const devleadCharter = files.find(
+      (f) => f.path === 'workspaces/devlead/CLAUDE.md',
+    )!.content;
+    const agentRolesTemplate = assembleFiles().find(
+      (f) => f.path === 'references/agent-roles.md',
+    )!.content;
+    const pairs = findDuplicateProse(
+      [
+        { path: 'devlead-charter', content: devleadCharter },
+        { path: 'agent-roles', content: agentRolesTemplate },
+      ],
+      {
+        shingleSize: DEFAULT_THRESHOLDS.duplicationShingleSize,
+        similarityFloor: DEFAULT_THRESHOLDS.duplicationSimilarityFloor,
+        minBlockTokens: DEFAULT_THRESHOLDS.duplicationMinBlockTokens,
+        countTokens: DEFAULT_TOKEN_COUNTER,
+      },
+    );
+    expect(pairs).toEqual([]);
+  });
+
   it('emits every SPEC §7.2 path (structure completeness)', () => {
     inTmp((dir) => {
       writeWorkspace(dir);
@@ -376,6 +475,45 @@ describe('init: end-to-end through the CLI (§7.1)', () => {
       expect(stderr).toContain('invalid role name');
       // Clean stderr, not an unhandled InvalidRoleError stack dump (error boundary).
       expect(stderr).not.toMatch(/\n\s+at /);
+    });
+  }, 20000);
+
+  it('init --class devlead then audit reports zero findings from source (exit 0)', () => {
+    inTmp((dir) => {
+      const init = runFromSource(['init', dir, '--class', 'devlead']);
+      expect(init.status, init.stderr).toBe(0);
+      const result = runFromSource(['audit', dir]);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        'No findings: workspace is ICM-compliant against SPEC',
+      );
+    });
+  }, 20000);
+
+  it('an unknown --class fails cleanly with exit 1 and no stack trace', () => {
+    inTmp((dir) => {
+      const { status, stderr } = runFromSource(['init', dir, '--class', 'nope']);
+      expect(status).toBe(1);
+      expect(stderr).toContain('unknown class');
+      expect(stderr).not.toMatch(/\n\s+at /);
+    });
+  }, 20000);
+
+  it('--role and --class together is a usage error that writes no tree', () => {
+    inTmp((dir) => {
+      const { status, stderr } = runFromSource([
+        'init',
+        dir,
+        '--role',
+        'x',
+        '--class',
+        'devlead',
+      ]);
+      expect(status).toBe(1);
+      expect(stderr).toContain('cannot combine --role and --class');
+      expect(stderr).not.toMatch(/\n\s+at /);
+      // Mutual exclusion is refused before any write: the target stays empty.
+      expect(readdirSync(dir)).toEqual([]);
     });
   }, 20000);
 });
