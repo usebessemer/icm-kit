@@ -23,7 +23,13 @@ import {
 } from '../src/init.js';
 import { audit } from '../src/audit.js';
 import { readWorkspace } from '../src/workspace.js';
-import { findDuplicateProse } from '../src/parse.js';
+import {
+  findDuplicateProse,
+  hasBehaviourBlock,
+  isIdentityHeading,
+  hasLoadSkipTable,
+  splitSections,
+} from '../src/parse.js';
 import { DEFAULT_THRESHOLDS } from '../src/model.js';
 import { DEFAULT_TOKEN_COUNTER } from '../src/tokens.js';
 
@@ -134,6 +140,16 @@ describe('assembleFiles(): the --class delegating-lead binder (§7.9)', () => {
     expect(charter?.content).toContain('Surface, do not decide');
     expect(charter?.content).toContain('Delegate, do not author');
     expect(charter?.content).toContain('Bubble up');
+    // AC1 / PR #71 nit 1: the `(Lead, Standing)` tuple is glossed in plain prose,
+    // not left as bare identity-algebra jargon for a first-adopter to decode.
+    expect(charter?.content).toContain('(Lead, Standing)');
+    expect(charter?.content).toContain('routes work rather than executing it');
+    expect(charter?.content).toContain('persists across sessions');
+    // AC3: the registry row is documented as a one-line operator action; the
+    // generator mutates no shipped file (registry.md included; see the added-paths
+    // assertion above), it only names the row to add.
+    expect(charter?.content).toContain('board/registry.md');
+    expect(charter?.content).toContain('one-line operator action');
     expect(charter?.content.includes('\r')).toBe(false);
   });
 
@@ -142,6 +158,10 @@ describe('assembleFiles(): the --class delegating-lead binder (§7.9)', () => {
       (f) => f.path === 'workspaces/devlead/context/leaf.md',
     );
     expect(leaf?.content).toContain('# The dev leaf');
+    // AC4: leaf.md carries only situational detail; it holds no dense identity /
+    // behaviour block, so W3 (a behaviour block in a situational file) stays
+    // silent. Assert against the same detector the audit fires on (src/audit.ts).
+    expect(hasBehaviourBlock(leaf!.content)).toBe(false);
     expect(leaf?.content.includes('\r')).toBe(false);
   });
 
@@ -429,6 +449,35 @@ describe('init: the v1.0 audit-green gate (§7.1)', () => {
     expect(pairs).toEqual([]);
   });
 
+  it('the devlead charter is compact: whole-file and per-section token headroom (F5/F1)', () => {
+    // AC2: pin the F5/F1 headroom explicitly (in token counts), so a later edit
+    // that bloats the charter fails here with a clear number rather than only in
+    // the general audit. Mirror the audit's F5 variant-B filter (src/audit.ts):
+    // measure every non-identity, non-load/skip section body against the
+    // layerBloatProseTokens cap, and the whole file against claudeMdMaxTokens.
+    const charter = assembleFiles({ class: 'devlead' }).find(
+      (f) => f.path === 'workspaces/devlead/CLAUDE.md',
+    )!.content;
+
+    // F1 whole-file: well under the 4000-token CLAUDE.md cap, with ample headroom
+    // (a compact class charter, not a monolith).
+    const whole = DEFAULT_TOKEN_COUNTER(charter);
+    expect(whole).toBeLessThan(DEFAULT_THRESHOLDS.claudeMdMaxTokens);
+    expect(whole).toBeLessThan(DEFAULT_THRESHOLDS.claudeMdMaxTokens / 2);
+
+    // F5 variant B: each non-identity section body under the per-section cap.
+    for (const section of splitSections(charter)) {
+      if (section.level === 0) continue;
+      if (isIdentityHeading(section.heading)) continue;
+      if (hasLoadSkipTable(section.body)) continue;
+      const tokens = DEFAULT_TOKEN_COUNTER(section.body);
+      expect(
+        tokens,
+        `section "${section.heading}" is ${tokens} tokens (cap ${DEFAULT_THRESHOLDS.layerBloatProseTokens})`,
+      ).toBeLessThanOrEqual(DEFAULT_THRESHOLDS.layerBloatProseTokens);
+    }
+  });
+
   it('emits every SPEC §7.2 path (structure completeness)', () => {
     inTmp((dir) => {
       writeWorkspace(dir);
@@ -496,6 +545,9 @@ describe('init: end-to-end through the CLI (§7.1)', () => {
       expect(status).toBe(1);
       expect(stderr).toContain('unknown class');
       expect(stderr).not.toMatch(/\n\s+at /);
+      // PR #71 nit 2: an unknown class is refused before any write, so the target
+      // stays empty (symmetry with the --role/--class conflict case below).
+      expect(readdirSync(dir)).toEqual([]);
     });
   }, 20000);
 

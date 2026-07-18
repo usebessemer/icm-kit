@@ -250,7 +250,7 @@ function classFiles(className: string): GeneratedFile[] {
 function classCharter(className: string): string {
   return `# The delegating-lead class (${className})
 
-This is an L1 delegating-lead workspace stamped below the root by \`icm-kit init --class ${className}\`. It stacks a standing \`(Lead, Standing)\` charter on the operator's root identity: it runs a board, hands the hands-on building to a dev leaf, and carries decisions back up to the operator without authoring the work itself. Rename the folder and fill in this stream's real domain when you adopt it; what ships here is the reusable class contract, not one stream's specifics.
+This is an L1 delegating-lead workspace stamped below the root by \`icm-kit init --class ${className}\`. Its identity is a \`(Lead, Standing)\` cell: a lead role (it routes work rather than executing it) that stands (it persists across sessions instead of spinning up per task). Stacked on the operator's root identity, it runs a board, hands the hands-on building to a dev leaf, and carries decisions back up to the operator without authoring the work itself. Rename the folder and fill in this stream's real domain when you adopt it; what ships here is the reusable class contract, not one stream's specifics.
 
 ## What a delegating lead does
 
@@ -266,11 +266,14 @@ This lead spawns one dev leaf that does the scoped building. Who that leaf is, t
 
 ## Bindings
 
-One row binds the reusable class to this concrete stream. Fill it in on adoption:
+A compact table binds the reusable class to this concrete code stream. Fill each row in on adoption; keep it to one line apiece so the contract stays legible.
 
 | Binding | This stream |
 |---|---|
 | Dev leaf (repo / scope) | _(see [\`context/leaf.md\`](context/leaf.md); set on adoption)_ |
+| Board (where work is queued) | _(the board or tracker the lead routes work from; set on adoption)_ |
+| Review / handback channel | _(where the leaf returns finished work for review; set on adoption)_ |
+| Definition of done | _(the bar a unit clears before it bubbles up; set on adoption)_ |
 
 Register the stream by adding its row to the root [\`board/registry.md\`](../../board/registry.md) by hand: a one-line operator action. This charter never edits the registry or any other shipped root file; it only names the row to add.
 
